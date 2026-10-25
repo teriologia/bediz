@@ -215,7 +215,8 @@ function geometry(l: Shape, W: number, H: number): { d: string; evenodd: boolean
     case "ring": {
       const i = l.inset;
       const x = i ?? l.x ?? 0, y = i ?? l.y ?? 0;
-      const w = i !== undefined ? W - 2 * i : l.w ?? W - x, h = i !== undefined ? H - 2 * i : l.h ?? H - y;
+      // Açıkça verilen w/h her zaman kazanır; inset yalnızca eksik olanları tuvalden içeri doldurur.
+      const w = l.w ?? (i !== undefined ? W - 2 * i : W - x), h = l.h ?? (i !== undefined ? H - 2 * i : H - y);
       const r = l.radius ?? 0, c = l.chamfer ?? 0;
       const outer = boxPath(x, y, w, h, r, c);
       if (l.kind === "box") return { d: outer, evenodd: false };

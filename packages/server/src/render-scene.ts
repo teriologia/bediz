@@ -21,21 +21,28 @@ export async function renderWidget(widget: Widget, assets: Map<string, Asset>, b
     parts.push({ input, left: x0, top: y0 });
   };
 
+  /** Asset'i verilen boyuta çizer: tile → döşer, 9-slice → gerer (sığmıyorsa düz gerer), diğerleri → düz gerer. */
+  const brushImage = async (n: Node, assetId: string, w: number, h: number): Promise<Buffer> => {
+    const a = assets.get(assetId);
+    if (!a) throw new Error(`${n.id}: asset yok: ${assetId}`);
+    if (a.tile) {
+      return sharp({ create: { width: w, height: h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: a.path, tile: true }]).png().toBuffer();
+    }
+    const sl = a.slice;
+    return sl && w >= sl.left + sl.right && h >= sl.top + sl.bottom ? renderNineSlice(a, w, h) : sharp(a.path).resize(w, h, { fit: "fill" }).png().toBuffer();
+  };
+
   const draw = async (n: Node) => {
     const r = rects.get(n.id)!;
     const [x, y, w, h] = [Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h)];
     if (w <= 0 || h <= 0) return;
-    if ((n.type === "Border" || n.type === "Image") && n.brush) {
-      const a = assets.get(n.brush.asset);
-      if (!a) throw new Error(`${n.id}: asset yok: ${n.brush.asset}`);
-      if (a.tile) {
-        const tiled = await sharp({ create: { width: w, height: h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-          .composite([{ input: a.path, tile: true }]).png().toBuffer();
-        return void (await clipped(tiled, x, y, w, h));
+    if (n.brush && ["Border", "Image", "Button", "ProgressBar"].includes(n.type)) {
+      await clipped(await brushImage(n, n.brush.asset, w, h), x, y, w, h);
+      // ProgressBar dolgusu: UE'nin barFillStyle=Scale davranışı gibi, brush yüzdeye göre gerilir (9-slice köşeleri korur).
+      if (n.type === "ProgressBar" && n.fill) {
+        const i = Math.round(n.inset ?? 0), fw = Math.round((w - 2 * i) * (n.percent ?? 0.5)), fh = h - 2 * i;
+        if (fw > 0 && fh > 0) await clipped(await brushImage(n, n.fill.asset, fw, fh), x + i, y + i, fw, fh);
       }
-      const s = a.slice;
-      const fits = s && w >= s.left + s.right && h >= s.top + s.bottom;
-      await clipped(fits ? await renderNineSlice(a, w, h) : await sharp(a.path).resize(w, h, { fit: "fill" }).png().toBuffer(), x, y, w, h);
     } else if (n.type === "TextBlock" && n.text) {
       const fs = n.fontSize ?? 16;
       // Yazı vektör yola çevrilir (Roboto Bold, UE'nin varsayılanı) ve rect'ine kırpılmaz (UMG gibi taşabilir); sadece canvas sınırında kırpılır.

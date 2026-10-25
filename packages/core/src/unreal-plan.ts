@@ -81,10 +81,12 @@ export function unrealPlan(widget: Widget, lookup: (assetId: string) => Asset | 
   // 1) kullanılan asset'ler
   const used = new Map<string, Asset>();
   for (const { node } of walk(widget.root)) {
-    if (!node.brush) continue;
-    const a = lookup(node.brush.asset);
-    if (!a) throw new Error(`${node.id}: asset yok: ${node.brush.asset} (önce export_design ile dışa aktar)`);
-    used.set(a.id, a);
+    for (const id of [node.brush?.asset, node.states?.hovered?.asset, node.states?.pressed?.asset, node.states?.disabled?.asset, node.fill?.asset]) {
+      if (!id) continue;
+      const a = lookup(id);
+      if (!a) throw new Error(`${node.id}: asset yok: ${id} (önce export_design ile dışa aktar)`);
+      used.set(a.id, a);
+    }
   }
   const textures: Record<string, string> = {}, texName = new Map<string, string>();
   for (const id of used.keys()) {
@@ -135,7 +137,21 @@ export function unrealPlan(widget: Widget, lookup: (assetId: string) => Asset | 
     };
   };
   const brushOf = (n: Node) => (n.brush ? brushJson(used.get(n.brush.asset)!) : { drawAs: "NoDrawType", ...(n.size ? { imageSize: { x: n.size.x, y: n.size.y } } : {}) });
+  // Button/ProgressBar stilleri UE'de varsayılan olarak gri tint'lidir; dokulu brush'ların renkleri bozulmasın diye beyaza çekilir.
+  const white = { specifiedColor: { r: 1, g: 1, b: 1, a: 1 }, colorUseRule: "UseColor_Specified" };
+  const styled = (b: Record<string, unknown>) => ({ ...b, tintColor: white });
+  const stateBrush = (n: Node, k: "hovered" | "pressed" | "disabled") => (n.states?.[k] ? brushJson(used.get(n.states[k]!.asset)!) : brushOf(n));
   const widgetValues = (n: Node): Record<string, unknown> => {
+    if (n.type === "Button") {
+      return { widgetStyle: { normal: styled(brushOf(n)), hovered: styled(stateBrush(n, "hovered")), pressed: styled(stateBrush(n, "pressed")), disabled: styled(stateBrush(n, "disabled")) } };
+    }
+    if (n.type === "ProgressBar") {
+      const i = n.inset ?? 0;
+      return {
+        widgetStyle: { backgroundImage: styled(brushOf(n)), fillImage: n.fill ? styled(brushJson(used.get(n.fill.asset)!)) : { drawAs: "NoDrawType" } },
+        percent: n.percent ?? 0.5, barFillType: "LeftToRight", barFillStyle: "Scale", borderPadding: { x: i, y: i }, fillColorAndOpacity: { r: 1, g: 1, b: 1, a: 1 },
+      };
+    }
     if (n.type === "Image") return { brush: { ...brushOf(n), ...(n.size ? { imageSize: { x: n.size.x, y: n.size.y } } : {}) } };
     if (n.type === "Border") return { background: brushOf(n) };
     if (n.type === "TextBlock") return { text: n.text ?? "", font: { size: n.fontSize ?? 16 }, colorAndOpacity: { specifiedColor: linear(n.color ?? "#ffffff"), colorUseRule: "UseColor_Specified" } };

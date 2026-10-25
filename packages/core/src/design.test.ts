@@ -48,6 +48,11 @@ assert.equal(expandLayers(crk(1, { highlight: false })).length * 2 <= expandLaye
 // yön verilince çatlaklar o eksende ilerler (yatay: x değişimi y değişiminden büyük)
 const horiz = expandLayers(crk(3, { direction: 0, spread: 0.4, highlight: false })).filter((l) => /__\d+_0$/.test(l.id)) as { points: [number, number][] }[];
 assert.ok(horiz.length === 3 && horiz.every((l) => Math.abs(l.points.at(-1)![0] - l.points[0][0]) > Math.abs(l.points.at(-1)![1] - l.points[0][1])));
+// inset + açık h: h kazanır (parlama şeridi gibi katmanlar tüm yüzeyi kaplamasın)
+const gl = (extra: object) => compileDesign(DesignSchema.parse({ id: "g", kind: "sprite", width: 64, height: 64, layers: [{ id: "b", kind: "box", inset: 4, fill: { kind: "solid", color: "#ffffff" }, ...extra }] }));
+assert.match(gl({}), /M4,4 H60 V60 H4 Z/);
+assert.match(gl({ h: 10 }), /M4,4 H60 V14 H4 Z/);
+assert.match(gl({ w: 20 }), /M4,4 H24 V60 H4 Z/);
 assert.equal(shade("#808080", 1), "#ffffff");
 assert.equal(shade("#808080", -1), "#000000");
 console.log("design ok");

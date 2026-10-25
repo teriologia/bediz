@@ -8,3 +8,4 @@ export * from "./material.js";
 export * from "./effects.js";
 export * from "./container.js";
 export * from "./unreal-plan.js";
+export * from "./components.js";

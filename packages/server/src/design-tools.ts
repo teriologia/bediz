@@ -28,7 +28,7 @@ function commit(id: string, mutate: (d: Design) => void): Design {
   return valid;
 }
 
-async function exportDesign(d: Design) {
+export async function exportDesign(d: Design) {
   const dir = join(projectDir(), "art");
   mkdirSync(dir, { recursive: true });
   const path = join(dir, `${d.id}.png`);

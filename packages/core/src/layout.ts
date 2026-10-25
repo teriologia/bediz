@@ -24,7 +24,13 @@ export function layoutWidget(widget: Widget, assetSize: AssetSize, measureText: 
         return s ?? { w: 0, h: 0 };
       }
       case "TextBlock": return measureText(n.text ?? "", n.fontSize ?? 16);
-      case "Border": return n.children[0] ? outer(n.children[0]) : { w: 0, h: 0 };
+      case "Border":
+      case "Button": return n.children[0] ? outer(n.children[0]) : { w: 0, h: 0 };
+      case "ProgressBar": {
+        if (n.size) return { w: n.size.x, h: n.size.y };
+        const s = n.brush && assetSize(n.brush.asset);
+        return s ?? { w: 100, h: 20 };
+      }
       case "HorizontalBox": return fold(n, (a, b) => a + b, Math.max);
       case "VerticalBox": return fold(n, Math.max, (a, b) => a + b);
       case "Overlay": return fold(n, Math.max, Math.max);
@@ -77,6 +83,7 @@ export function layoutWidget(widget: Widget, assetSize: AssetSize, measureText: 
       }
       case "Overlay":
       case "Border":
+      case "Button":
         for (const c of n.children) arrange(c, place(r, c));
         break;
     }
