@@ -2,6 +2,7 @@ import { z } from "zod";
 import { barRecipe, buttonRecipe, metalOf, slotRecipe, THEME_LOOK, type ComponentRecipe } from "./components.js";
 import { GHOST_LINE, THEME_NAMES, containerRecipe } from "./container.js";
 import { DesignSchema, shade, type Design } from "./design.js";
+import { dropdownRecipe, inputRecipe, scrollbarRecipe, tooltipRecipe } from "./fields.js";
 import { MATERIAL_PRESETS } from "./material.js";
 import { WidgetSchema, type Node } from "./scene.js";
 
@@ -98,7 +99,7 @@ export function tabsRecipe(input: TabsInput): ComponentRecipe & { tab: ReturnTyp
 export const UiKitInputSchema = z.object({ id: Id, theme: z.enum(THEME_NAMES).optional(), frame: z.enum(MATERIAL_PRESETS).optional(), style: z.enum(["metal", "ghost"]).optional() }).strict();
 export type UiKitInput = z.infer<typeof UiKitInputSchema>;
 
-/** Bir temadan tutarlı bileşen seti: panel, düğme, sekmeler, çubuk, slot, toggle, kaydırıcı. Hepsi aynı tema/stil/metal ile üretilir. */
+/** Bir temadan tutarlı bileşen seti: panel, düğme, sekmeler, çubuk, slot, toggle, kaydırıcı, metin girişi, açılır liste, kaydırma çubuğu, tooltip. Hepsi aynı tema/stil/metal ile üretilir. */
 export function uiKitRecipe(input: UiKitInput) {
   const { id, theme = "gold-stone", ...o } = UiKitInputSchema.parse(input);
   const base = { theme, frame: o.frame, style: o.style } as const;
@@ -111,6 +112,10 @@ export function uiKitRecipe(input: UiKitInput) {
     slot: slotRecipe({ id: `${id}_slot`, size: 72, ...base }),
     toggle: toggleRecipe({ id: `${id}_toggle`, ...base }),
     slider: sliderRecipe({ id: `${id}_slider`, ...base }),
+    input: inputRecipe({ id: `${id}_input`, placeholder: "Oyuncu adı...", ...base }),
+    dropdown: dropdownRecipe({ id: `${id}_dropdown`, ...base }),
+    scrollbar: scrollbarRecipe({ id: `${id}_scroll`, ...base }),
+    tooltip: tooltipRecipe({ id: `${id}_tooltip`, title: "Kadim Mühür", body: "Geçidi açar ve yakındaki düşmanlara hasar verir.", ...base }),
   };
   return { theme, style: o.style ?? "metal", tokens: { ...THEME_LOOK[theme], line: GHOST_LINE[metalOf(theme, o.frame)] ?? "#c9a45a", metal: metalOf(theme, o.frame) }, components };
 }

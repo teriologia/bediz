@@ -1,8 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SliderInputSchema, TabsInputSchema, ToggleInputSchema, UiKitInputSchema, sliderRecipe, tabsRecipe, toggleRecipe, uiKitRecipe } from "@bediz/core";
+import {
+  DropdownInputSchema, InputInputSchema, ScrollbarInputSchema, SliderInputSchema, TabsInputSchema, ToggleInputSchema, TooltipInputSchema, UiKitInputSchema,
+  dropdownRecipe, inputRecipe, scrollbarRecipe, sliderRecipe, tabsRecipe, toggleRecipe, tooltipRecipe, uiKitRecipe, type ComponentRecipe,
+} from "@bediz/core";
 import { brushes, content, find, install, sheet, variant } from "./component-tools.js";
 import { renderWidget } from "./render-scene.js";
 import { assets } from "./state.js";
+import { measureText } from "./text.js";
 
 const BG = "#2a2a32";
 
@@ -41,6 +45,19 @@ export function registerKitTools(server: McpServer) {
       return content({ theme: r.theme, widget: { id: r.widget.id, width: r.widget.width, height: r.widget.height }, tab: r.tab, assets: brushes(exported) }, await renderWidget(r.widget, assets, BG));
     },
   );
+
+  // Tek önizlemeli bileşenler: kur, dışa aktar, çiz.
+  const simple = (name: string, description: string, shape: Record<string, never> | object, make: (input: never) => ComponentRecipe & Record<string, unknown>) =>
+    server.tool(name, description, shape as never, (async (input: never) => {
+      const r = make(input);
+      const exported = await install(r);
+      const { theme, designs: _d, widget, ...extra } = r;
+      return content({ theme, widget: { id: widget.id, width: widget.width, height: widget.height }, ...extra, assets: brushes(exported) }, await renderWidget(widget, assets, BG));
+    }) as never);
+  simple("create_input", "Metin girişi: `<id>_normal|_focused|_disabled` çerçeveleri + yer tutucu/değer yazısı (style: metal | ghost). Yazma davranışı oyunun işi.", InputInputSchema.shape, inputRecipe as never);
+  simple("create_dropdown", "Açılır liste: kapalı alan + ok, `open` ile açık liste paneli ve seçili satır vurgusu. Aç/kapa oyunda görünürlükle yapılır.", DropdownInputSchema.shape, dropdownRecipe as never);
+  simple("create_scrollbar", "Dikey kaydırma çubuğu: oluk + başlık (+ hover varyantı); start/size oranları başlığın yerini ve boyunu verir. Kaydırma mantığı oyunun işi.", ScrollbarInputSchema.shape, scrollbarRecipe as never);
+  simple("create_tooltip", "Bilgi balonu: çerçeveli panel + başlık + sarılmış gövde metni; yükseklik metin ölçüsünden hesaplanır.", TooltipInputSchema.shape, ((i: never) => tooltipRecipe(i, measureText)) as never);
 
   server.tool(
     "create_ui_kit",
