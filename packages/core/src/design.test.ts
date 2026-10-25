@@ -64,4 +64,15 @@ assert.match(fxSvg, /stop-opacity="0\.8"/);
 assert.match(fxSvg, /cx="0\.5" cy="0\.5" r="0\.7"/);
 assert.match(fxSvg, /feTurbulence/);
 assert.throws(() => DesignSchema.parse({ ...fx, layers: [{ ...fx.layers[0], blend: "bogus" }] }));
+// path: gerçek Bézier SVG'ye aynen geçer; enjeksiyon ve M'siz başlangıç reddedilir. polygon smooth: C komutları, corners'taki köşe keskin kalır
+const pd = DesignSchema.parse({ id: "pd", kind: "sprite", width: 64, height: 64, layers: [{ id: "p", kind: "path", d: "M8,32 C8,8 56,8 56,32 S8,56 8,32 Z", fill: { kind: "solid", color: "#ffffff" } }] });
+assert.match(compileDesign(pd), /d="M8,32 C8,8 56,8 56,32 S8,56 8,32 Z"/);
+assert.throws(() => DesignSchema.parse({ ...pd, layers: [{ id: "p", kind: "path", d: 'M0,0 L1,1" onload="x' }] }));
+assert.throws(() => DesignSchema.parse({ ...pd, layers: [{ id: "p", kind: "path", d: "L0,0 L9,9" }] }));
+const sq: [number, number][] = [[10, 10], [50, 10], [50, 50], [10, 50]];
+const sm = (corners?: number[]) => compileDesign(DesignSchema.parse({ id: "sm", kind: "sprite", width: 64, height: 64, layers: [{ id: "q", kind: "polygon", points: sq, smooth: 1, corners, fill: { kind: "solid", color: "#ffffff" } }] }));
+assert.equal((sm().match(/ C/g) ?? []).length, 4);
+// köşe 0 keskin: ilk segmentin ilk kontrol noktası köşenin kendisi (10,10)
+assert.match(sm([0]), /M10,10 C10,10 /);
+assert.doesNotMatch(sm(), /M10,10 C10,10 /);
 console.log("design ok");

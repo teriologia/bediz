@@ -12,6 +12,9 @@ export const TEXTURE_PRESETS = ["stone", "gold", "slate", "wood"] as const;
 export type TexturePreset = (typeof TEXTURE_PRESETS)[number];
 
 /** Doku dolgusu: şeklin içine procedural doku basar. Tile tasarımlarda dikişsiz (stitch) çalışır. */
+// SVG özniteliğine yazıldığı için kümeyi kısıtlı tutar (enjeksiyon yok); komut/argüman sayısı doğrulanmaz: bozuk yol çizimde boş kalır.
+const PATH_CHARS = /^[MmLlHhVvCcSsQqTtAaZz0-9eE+\-.,\s]+$/;
+
 const TextureFill = z.object({
   kind: z.literal("texture"),
   preset: z.enum(TEXTURE_PRESETS),
@@ -76,7 +79,10 @@ export const LayerSchema = z.discriminatedUnion("kind", [
   z.object({ ...common, kind: z.literal("box"), ...boxGeo }).strict(),
   // Halka: kutunun dış sınırı, kalınlığı `thickness`; ortası boş (çerçeve için).
   z.object({ ...common, kind: z.literal("ring"), ...boxGeo, thickness: num.positive() }).strict(),
-  z.object({ ...common, kind: z.literal("polygon"), points: z.array(z.tuple([num, num])).min(3) }).strict(),
+  // smooth: 0..1 — köşeleri Catmull-Rom→Bézier ile yuvarlar (1 = tam yumuşak); corners: yumuşatılmayacak (keskin) köşe indeksleri.
+  z.object({ ...common, kind: z.literal("polygon"), points: z.array(z.tuple([num, num])).min(3), smooth: z.number().min(0).max(1).optional(), corners: z.array(z.number().int().min(0)).optional() }).strict(),
+  // Yol: SVG path verisi (M L H V C S Q T A Z, mutlak/göreli). Gerçek Bézier/yay eğrileri; kapalı alan dolgulanır, istenirse stroke.
+  z.object({ ...common, kind: z.literal("path"), d: z.string().min(2).max(4000).regex(PATH_CHARS, "d yalnızca SVG yol komutları, sayı ve ayraç içerebilir").regex(/^\s*[Mm]/, "d bir M komutuyla başlamalı"), evenodd: z.boolean().optional() }).strict(),
   z.object({ ...common, kind: z.literal("ellipse"), cx: num, cy: num, rx: num.positive(), ry: num.positive() }).strict(),
   // Hazır mücevher: faset + (isteğe bağlı) altın yuva. fill/effects kullanmaz.
   z.object({ id: z.string().min(1), name: z.string().optional(), opacity: z.number().min(0).max(1).optional(), hidden: z.boolean().optional(),
@@ -220,12 +226,27 @@ function boxPath(x: number, y: number, w: number, h: number, r = 0, c = 0): stri
 
 export type Shape = Exclude<Layer, { kind: "gem" | "corners" | "cracks" | "rivets" }>;
 
+/** Kapalı çokgeni Catmull-Rom → kübik Bézier'e çevirir; tension 0..1, `sharp` köşelerde teğet sıfırlanır (köşe korunur). */
+function smoothPath(P: [number, number][], tension: number, sharp: Set<number>): string {
+  const n = P.length, at = (i: number) => P[((i % n) + n) % n], f = (p: [number, number]) => `${fmt(p[0])},${fmt(p[1])}`;
+  const k = tension / 6;
+  let d = `M${f(P[0])}`;
+  for (let i = 0; i < n; i++) {
+    const a = at(i), b = at(i + 1), p = at(i - 1), q = at(i + 2);
+    const c1: [number, number] = sharp.has(i % n) ? a : [a[0] + (b[0] - p[0]) * k, a[1] + (b[1] - p[1]) * k];
+    const c2: [number, number] = sharp.has((i + 1) % n) ? b : [b[0] - (q[0] - a[0]) * k, b[1] - (q[1] - a[1]) * k];
+    d += ` C${f(c1)} ${f(c2)} ${f(b)}`;
+  }
+  return `${d} Z`;
+}
+
 function geometry(l: Shape, W: number, H: number): { d: string; evenodd: boolean } {
   switch (l.kind) {
     case "line":
       if (!l.stroke) throw new Error(`line ${l.id}: stroke gerekli`);
       return { d: `M${l.points.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(" L")}${l.closed ? " Z" : ""}`, evenodd: false };
-    case "polygon": return { d: `M${l.points.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(" L")} Z`, evenodd: false };
+    case "polygon": return { d: l.smooth ? smoothPath(l.points, l.smooth, new Set(l.corners)) : `M${l.points.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(" L")} Z`, evenodd: false };
+    case "path": return { d: l.d, evenodd: !!l.evenodd };
     case "ellipse": return { d: `M${fmt(l.cx - l.rx)},${fmt(l.cy)} A${fmt(l.rx)},${fmt(l.ry)} 0 1 0 ${fmt(l.cx + l.rx)},${fmt(l.cy)} A${fmt(l.rx)},${fmt(l.ry)} 0 1 0 ${fmt(l.cx - l.rx)},${fmt(l.cy)} Z`, evenodd: false };
     case "box":
     case "ring": {
