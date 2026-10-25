@@ -47,7 +47,7 @@ export async function renderDesignPng(d: Design, background?: string): Promise<B
   }
   let img = sharp({ create: { width: d.width, height: d.height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite(parts);
   // SVG `texture` dolgusu (librsvg stitchTiles çalışmıyor) dikişsizliği sonradan alır; `material` zaten periyodik.
-  if (d.kind === "tile" && d.layers.some((l) => l.kind !== "gem" && l.fill?.kind === "texture")) {
+  if (d.kind === "tile" && d.layers.some((l) => "fill" in l && l.fill?.kind === "texture")) {
     const { data, info } = await sharp(await img.png().toBuffer()).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     img = sharp(makeSeamless(data, info.width, info.height), { raw: { width: info.width, height: info.height, channels: 4 } });
   }

@@ -34,7 +34,7 @@ const mod = (a: number, n: number) => ((a % n) + n) % n;
 const smooth = (t: number) => t * t * (3 - 2 * t);
 const clamp = (v: number, lo = 0, hi = 1) => (v < lo ? lo : v > hi ? hi : v);
 
-function hash2(x: number, y: number, seed: number): number {
+export function hash2(x: number, y: number, seed: number): number {
   let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(seed | 0, 1442695041)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   h ^= h >>> 16;

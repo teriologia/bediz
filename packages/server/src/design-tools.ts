@@ -62,6 +62,8 @@ export function registerDesignTools(server: McpServer) {
           ring: "box gibi + thickness: ortası boş çerçeve halkası (eşit kalınlık).",
           polygon: "points [[x,y],...]", ellipse: "cx,cy,rx,ry",
           gem: "cx,cy,size,color + shape(diamond|round|hex) + setting(gold|none): hazır faset mücevher (altın yuvalı).",
+          line: "points [[x,y],...], closed?; stroke ZORUNLU (fill kullanma). Açık uçlu çizgi: tel, oyuk, çatlak.",
+          cracks: "x,y,w,h bölgesine count adet dallanan çatlak (koyu iz + parlak kenar); length, seed, direction (rad, bir yöne hizalar), spread. Bölgeyi yüzeyin içinde tut (boşluğa taşan çatlak havada kalır).",
           corners: "style:blade, size (px; slice marjını aşma, yoksa gerilir), inset?, which?:[tl,tr,bl,br], studs? — 4 köşeye kıvrımlı bıçak süsü; fill/stroke/effects her parçaya uygulanır.",
         },
         fills: "solid{color,opacity} · linear{angle,stops} · radial{stops} · material{preset,pattern?,colors?,scale?,seed?,wear?(0..1: kenar aşınması+kir)} · texture{...eski}",
@@ -191,27 +193,46 @@ export function registerDesignTools(server: McpServer) {
     {
       id: designId, width: z.number().int().min(120).max(2048).default(480), height: z.number().int().min(120).max(2048).default(320),
       background: z.enum(MATERIAL_PRESETS).default("stone"), pattern: z.enum(STONE_PATTERNS).optional(), frame: z.enum(MATERIAL_PRESETS).default("gold"),
-      thickness: z.number().int().min(6).max(80).default(26), radius: z.number().int().min(0).max(60).default(14),
+      thickness: z.number().int().min(10).max(90).default(30), radius: z.number().int().min(0).max(60).default(14),
+      chamfer: z.boolean().default(true), cracks: z.boolean().default(true),
       ornaments: z.boolean().default(true), cornerSize: z.number().int().min(24).max(200).default(64), wear: z.number().min(0).max(1).default(0.5),
       gem: z.boolean().default(true), gemColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#2fb5c9"),
       gemShape: z.enum(["diamond", "round", "hex"]).default("diamond"), gemSize: z.number().int().min(16).max(160).default(44),
     },
     async (p) => {
-      const t = p.thickness, r = p.radius, m = Math.max(t + 14, p.ornaments ? p.cornerSize + 2 : 0), S = 2 * m + 96;
+      const t = p.thickness, r = p.radius, c0 = Math.max(8, Math.round(r * 1.6));
+      // Süs pah kırık köşenin dışına taşmasın diye içeri alınır; slice marjı süsü kapsar (yoksa gerilir).
+      const orn = p.chamfer ? Math.round(c0 * 0.5) : 2;
+      const m = Math.max(t + 14, p.ornaments ? p.cornerSize + orn + 2 : 0), S = 2 * m + 96;
       const bgD = DesignSchema.parse({ id: `${p.id}_bg`, kind: "tile", width: 256, height: 256, layers: [
         { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: p.background, pattern: p.pattern, seed: 5, wear: p.wear * 0.8 } },
       ] });
+      // Katmanlar dıştan içe: dış altın bant, koyu arduvaz bant (oyuk), iç altın çıta; toplam kalınlık = thickness.
+      const g = Math.round(t * 0.42), rim = Math.max(3, Math.round(t * 0.12)), sl = t - g - rim;
+      // Köşe biçimi: pah (chamfer) ya da yuvarlak; iç halkalarda eşit kalınlık için küçülür (inset 2 = dış altın başlangıcı).
+      const corner = (inset: number) => (p.chamfer ? { chamfer: Math.max(0, Math.round(c0 - (inset - 2) * 0.586)) } : { radius: Math.max(0, r - (inset - 2)) });
+      const gold = (seed: number) => ({ kind: "material" as const, preset: p.frame, seed, wear: p.wear });
+      // Çatlaklar sadece bantlarda: her köşede üst/alt bant boyunca yatay, yan bant boyunca dikey birer çatlak.
+      const cw = m - 12, b0 = Math.round(t * 0.3), bh = Math.round(t * 0.4), crackLayers: Record<string, unknown>[] = [];
+      [[1, 1], [-1, 1], [1, -1], [-1, -1]].forEach(([sx, sy], k) => {
+        const at = (x0: number, y0: number, w: number, h: number) => ({ x: sx > 0 ? x0 : S - x0 - w, y: sy > 0 ? y0 : S - y0 - h, w, h });
+        crackLayers.push({ id: `crack_h${k}`, kind: "cracks", ...at(8, b0, cw, bh), count: 1, length: Math.round(m * 0.5), seed: 11 + k, direction: 0 });
+        crackLayers.push({ id: `crack_v${k}`, kind: "cracks", ...at(b0, 8, bh, cw), count: 1, length: Math.round(m * 0.5), seed: 21 + k, direction: Math.PI / 2 });
+      });
       const frameD = DesignSchema.parse({ id: `${p.id}_frame`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: [
-        { id: "outline", kind: "ring", inset: 0, thickness: t + 5, radius: r + 2, fill: { kind: "solid", color: "#1a1008" } },
-        { id: "metal", kind: "ring", inset: 2, thickness: t, radius: r, fill: { kind: "material", preset: p.frame, seed: 3, wear: p.wear },
-          effects: [{ kind: "bevel", depth: 7, size: 10 }, { kind: "shadow", dx: 0, dy: 2, blur: 2, opacity: 0.5 }] },
-        // oyuk çizgisi: koyu iz + altında ince parlak kenar
-        { id: "groove", kind: "ring", inset: 2 + Math.round(t * 0.4), thickness: 2, radius: Math.max(0, r - Math.round(t * 0.4)), fill: { kind: "solid", color: "#2e1c06", opacity: 0.6 } },
-        { id: "groove_hi", kind: "ring", inset: 4 + Math.round(t * 0.4), thickness: 1, radius: Math.max(0, r - Math.round(t * 0.4) - 2), fill: { kind: "solid", color: "#fff1b8", opacity: 0.4 } },
+        { id: "outline", kind: "ring", inset: 0, thickness: t + 5, ...corner(0), fill: { kind: "solid", color: "#1a1008" } },
+        { id: "gold_outer", kind: "ring", inset: 2, thickness: g, ...corner(2), fill: gold(3),
+          effects: [{ kind: "bevel", depth: 6, size: Math.max(3, Math.round(g * 0.5)) }, { kind: "shadow", dx: 0, dy: 2, blur: 2, opacity: 0.5 }] },
+        { id: "slate", kind: "ring", inset: 2 + g, thickness: sl, ...corner(2 + g),
+          fill: { kind: "material", preset: "slate", pattern: "rough", scale: 2.2, seed: 6, wear: p.wear * 0.4 },
+          effects: [{ kind: "innerShadow", blur: 4, dy: 2, opacity: 0.8 }] },
+        { id: "gold_rim", kind: "ring", inset: 2 + g + sl, thickness: rim, ...corner(2 + g + sl), fill: gold(5),
+          effects: [{ kind: "bevel", depth: 3, size: Math.max(2, rim - 1) }, { kind: "shadow", dx: 0, dy: 1, blur: 1.5, opacity: 0.6 }] },
         // iç dudak: açıklığa yumuşak gölge düşürür
-        { id: "lip", kind: "ring", inset: t + 2, thickness: 4, radius: Math.max(0, r - t - 2), fill: { kind: "solid", color: "#0e0905", opacity: 0.9 },
+        { id: "lip", kind: "ring", inset: 2 + t, thickness: 3, ...corner(2 + t), fill: { kind: "solid", color: "#0e0905", opacity: 0.9 },
           effects: [{ kind: "shadow", dx: 0, dy: 3, blur: 7, opacity: 0.75 }] },
-        ...(p.ornaments ? [{ id: "corners", kind: "corners", style: "blade", size: p.cornerSize, inset: 1, fill: { kind: "material", preset: p.frame, seed: 4, wear: p.wear },
+        ...(p.cracks ? crackLayers : []),
+        ...(p.ornaments ? [{ id: "corners", kind: "corners", style: "blade", size: p.cornerSize, inset: orn, fill: gold(4),
           stroke: { color: "#1a1008", width: 1.6 }, effects: [{ kind: "bevel", depth: 5, size: 6 }, { kind: "shadow", dx: 1, dy: 3, blur: 3, opacity: 0.6 }] }] : []),
       ] });
       const G = Math.round(p.gemSize * 2.2);

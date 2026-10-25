@@ -32,6 +32,22 @@ assert.equal(pt("k__tl_horn_a")[0] + pt("k__tr_horn_a")[0], 200);
 assert.equal(pt("k__tl_horn_a")[1] + pt("k__bl_horn_a")[1], 160);
 assert.equal(expandLayers(DesignSchema.parse({ ...cd, layers: [{ ...cd.layers[0], which: ["tl"], studs: false }] })).length, 3);
 compileDesign(cd);
+// çizgi: açık uçlu (Z yok), stroke zorunlu; çatlak üretici deterministik ve seed'e duyarlı
+const ld = DesignSchema.parse({ id: "l", kind: "sprite", width: 64, height: 64, layers: [{ id: "a", kind: "line", points: [[4, 4], [30, 20], [50, 8]], stroke: { color: "#000000", width: 2 } }] });
+const lsvg = compileDesign(ld);
+assert.match(lsvg, /stroke-linecap="round"/);
+assert.ok(!/ Z"/.test(lsvg.match(/<path d="[^"]*"/)![0]), "açık uçlu çizgi kapanmamalı");
+assert.throws(() => compileDesign(DesignSchema.parse({ id: "l", kind: "sprite", width: 64, height: 64, layers: [{ id: "a", kind: "line", points: [[0, 0], [9, 9]] }] })), /stroke gerekli/);
+const crk = (seed: number, extra = {}) => DesignSchema.parse({ id: "k", kind: "sprite", width: 128, height: 128,
+  layers: [{ id: "c", kind: "cracks", x: 10, y: 10, w: 100, h: 100, count: 3, seed, ...extra }] });
+const pts = (d: ReturnType<typeof crk>) => JSON.stringify(expandLayers(d).map((l) => (l as { points: unknown }).points));
+assert.equal(pts(crk(1)), pts(crk(1)));
+assert.notEqual(pts(crk(1)), pts(crk(2)));
+assert.ok(expandLayers(crk(1)).length >= 6, "her çatlak: iz + parlak kenar");
+assert.equal(expandLayers(crk(1, { highlight: false })).length * 2 <= expandLayers(crk(1)).length + 1, true);
+// yön verilince çatlaklar o eksende ilerler (yatay: x değişimi y değişiminden büyük)
+const horiz = expandLayers(crk(3, { direction: 0, spread: 0.4, highlight: false })).filter((l) => /__\d+_0$/.test(l.id)) as { points: [number, number][] }[];
+assert.ok(horiz.length === 3 && horiz.every((l) => Math.abs(l.points.at(-1)![0] - l.points[0][0]) > Math.abs(l.points.at(-1)![1] - l.points[0][1])));
 assert.equal(shade("#808080", 1), "#ffffff");
 assert.equal(shade("#808080", -1), "#000000");
 console.log("design ok");

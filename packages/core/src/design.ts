@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { SliceSchema, validateSlice } from "./slice.js";
-import { MATERIAL_PRESETS, STONE_PATTERNS } from "./material.js";
+import { MATERIAL_PRESETS, STONE_PATTERNS, hash2 } from "./material.js";
 
 const Color = z.string().regex(/^#[0-9a-fA-F]{6}$/, "renk #RRGGBB olmalı");
 const Stops = z.array(z.tuple([z.number().min(0).max(1), Color])).min(2);
@@ -79,6 +79,14 @@ export const LayerSchema = z.discriminatedUnion("kind", [
   // Köşe süsü: kıvrımlı bıçaklar (+ orta kabartma). fill/stroke/effects her parçaya uygulanır. Boyut slice marjını aşmamalı (gerilmesin).
   z.object({ ...common, kind: z.literal("corners"), style: z.enum(["blade"]), size: num.positive(), inset: num.min(0).optional(),
     which: z.array(z.enum(["tl", "tr", "bl", "br"])).min(1).optional(), studs: z.boolean().optional() }).strict(),
+  // Açık uçlu çizgi (çatlak, tel, oyuk): stroke zorunlu; closed=true ise kapanır.
+  z.object({ ...common, kind: z.literal("line"), points: z.array(z.tuple([num, num])).min(2), closed: z.boolean().optional() }).strict(),
+  // Çatlak üretici: x,y,w,h bölgesine count adet dallanan çatlak (koyu iz + ince parlak kenar). Aynı seed → aynı çatlaklar.
+  z.object({ id: z.string().min(1), name: z.string().optional(), opacity: z.number().min(0).max(1).optional(), hidden: z.boolean().optional(),
+    kind: z.literal("cracks"), x: num, y: num, w: num.positive(), h: num.positive(), count: z.number().int().min(1).max(40).optional(),
+    length: num.positive().optional(), seed: z.number().int().min(0).max(9999).optional(), color: Color.optional(), width: num.positive().max(8).optional(),
+    highlight: z.boolean().optional(),
+    direction: num.optional(), spread: num.positive().max(6.3).optional() }).strict(), // direction (rad): çatlakları bir yöne hizalar; spread: sapma (varsayılan 0.8)
 ]);
 export type Layer = z.infer<typeof LayerSchema>;
 
@@ -191,10 +199,13 @@ function boxPath(x: number, y: number, w: number, h: number, r = 0, c = 0): stri
   return `M${fmt(x + r)},${fmt(y)} H${fmt(x + w - r)} ${a} ${fmt(x + w)},${fmt(y + r)} V${fmt(y + h - r)} ${a} ${fmt(x + w - r)},${fmt(y + h)} H${fmt(x + r)} ${a} ${fmt(x)},${fmt(y + h - r)} V${fmt(y + r)} ${a} ${fmt(x + r)},${fmt(y)} Z`;
 }
 
-export type Shape = Exclude<Layer, { kind: "gem" | "corners" }>;
+export type Shape = Exclude<Layer, { kind: "gem" | "corners" | "cracks" }>;
 
 function geometry(l: Shape, W: number, H: number): { d: string; evenodd: boolean } {
   switch (l.kind) {
+    case "line":
+      if (!l.stroke) throw new Error(`line ${l.id}: stroke gerekli`);
+      return { d: `M${l.points.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(" L")}${l.closed ? " Z" : ""}`, evenodd: false };
     case "polygon": return { d: `M${l.points.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(" L")} Z`, evenodd: false };
     case "ellipse": return { d: `M${fmt(l.cx - l.rx)},${fmt(l.cy)} A${fmt(l.rx)},${fmt(l.ry)} 0 1 0 ${fmt(l.cx + l.rx)},${fmt(l.cy)} A${fmt(l.rx)},${fmt(l.ry)} 0 1 0 ${fmt(l.cx - l.rx)},${fmt(l.cy)} Z`, evenodd: false };
     case "box":
@@ -271,13 +282,37 @@ function expandCorners(c: Extract<Layer, { kind: "corners" }>, W: number, H: num
   return out;
 }
 
-/** Görünür katmanlar; mücevher ve köşe süsleri alt şekillere açılmış (çizim sırasıyla). */
+// ---------- çatlaklar ----------
+function expandCracks(c: Extract<Layer, { kind: "cracks" }>): Layer[] {
+  const n = c.count ?? 3, len = c.length ?? 40, seed = c.seed ?? 1, wd = c.width ?? 1.4, out: Layer[] = [];
+  // Açı her adımda biraz sapar → kırık çizgi; salt her çatlağa özgü rastgelelik verir.
+  // direction verilmişse çatlak başlangıç yönüne geri çekilir (aksi halde sapma birikir, yüzeyin dışına savrulur).
+  const pull = c.direction === undefined ? 0 : 0.4;
+  const walk = (x: number, y: number, a: number, segs: number, step: number, salt: number): Pt[] => {
+    const pts: Pt[] = [[x, y]], anchor = a;
+    for (let k = 0; k < segs; k++) { a += (hash2(salt, k + 3, seed) - 0.5) * 1.1 + (anchor - a) * pull; x += Math.cos(a) * step; y += Math.sin(a) * step; pts.push([x, y]); }
+    return pts;
+  };
+  for (let i = 0; i < n; i++) {
+    const a0 = c.direction === undefined ? hash2(i, 2, seed) * Math.PI * 2 : c.direction + (hash2(i, 2, seed) - 0.5) * (c.spread ?? 0.8), segs = 6, step = len / segs;
+    const main = walk(c.x + hash2(i, 0, seed) * c.w, c.y + hash2(i, 1, seed) * c.h, a0, segs, step, i * 10);
+    const lines = [main];
+    if (hash2(i, 9, seed) > 0.45) lines.push(walk(main[3][0], main[3][1], a0 + (hash2(i, 8, seed) > 0.5 ? 0.9 : -0.9), 3, step * 0.8, i * 10 + 5));
+    lines.forEach((pts, j) => {
+      if (c.highlight !== false) out.push({ id: `${c.id}__${i}_${j}h`, kind: "line", points: pts.map(([x, y]) => [x + 0.9, y + 0.9] as Pt), stroke: { color: "#fff1b8", width: wd * 0.6, opacity: 0.22 } });
+      out.push({ id: `${c.id}__${i}_${j}`, kind: "line", points: pts, stroke: { color: c.color ?? "#1a1008", width: wd * (j ? 0.7 : 1), opacity: 0.8 } });
+    });
+  }
+  return out.map((l) => ({ ...l, opacity: c.opacity, hidden: c.hidden }) as Layer);
+}
+
+/** Görünür katmanlar; mücevher, köşe süsü ve çatlaklar alt şekillere açılmış (çizim sırasıyla). */
 export function expandLayers(d: Design): Shape[] {
   const out: Shape[] = [];
   for (const l of d.layers) {
     if (l.hidden) continue;
-    const subs: Layer[] = l.kind === "gem" ? expandGem(l) : l.kind === "corners" ? expandCorners(l, d.width, d.height) : [l];
-    for (const s of subs) if (!s.hidden && s.kind !== "gem" && s.kind !== "corners") out.push(s);
+    const subs: Layer[] = l.kind === "gem" ? expandGem(l) : l.kind === "corners" ? expandCorners(l, d.width, d.height) : l.kind === "cracks" ? expandCracks(l) : [l];
+    for (const s of subs) if (!s.hidden && s.kind !== "gem" && s.kind !== "corners" && s.kind !== "cracks") out.push(s);
   }
   return out;
 }
@@ -312,7 +347,7 @@ export function compileDesign(d: Design): string {
       filterAttr = ` filter="url(#f_${l.id})"`;
     }
     const fo = f?.kind === "solid" && f.opacity !== undefined ? ` fill-opacity="${f.opacity}"` : "";
-    const st = l.stroke ? ` stroke="${l.stroke.color}" stroke-width="${l.stroke.width}" stroke-opacity="${l.stroke.opacity ?? 1}" stroke-linejoin="round"` : "";
+    const st = l.stroke ? ` stroke="${l.stroke.color}" stroke-width="${l.stroke.width}" stroke-opacity="${l.stroke.opacity ?? 1}" stroke-linejoin="round" stroke-linecap="round"` : "";
     const op = l.opacity !== undefined ? ` opacity="${l.opacity}"` : "";
     body.push(`<path d="${path}" fill="${fill}"${fo}${evenodd ? ' fill-rule="evenodd"' : ""}${st}${op}${filterAttr}/>`);
   };
