@@ -5,7 +5,7 @@ import { WidgetSchema, type Widget } from "./scene.js";
 
 export const THEME_NAMES = ["gold-stone", "silver-slate", "bronze-wood", "ruby-blocks", "emerald-bronze"] as const;
 export type ThemeName = (typeof THEME_NAMES)[number];
-const STYLES = ["blade", "scroll", "claw"] as const;
+const STYLES = ["blade", "scroll", "claw", "filigree"] as const;
 
 /** Tarifin çözülmüş (varsayılanlar + tema + kullanıcı) parametreleri. */
 export interface ContainerParams {
@@ -19,15 +19,15 @@ export interface ContainerParams {
 const BASE: ContainerParams = {
   width: 480, height: 320, background: "stone", pattern: "flagstone", frame: "gold", band: "slate",
   thickness: 30, radius: 14, chamfer: true, cracks: true, wear: 0.5,
-  ornaments: true, cornerStyle: "blade", cornerSize: 64, gem: true, gemColor: "#2fb5c9", gemShape: "diamond", gemSize: 44,
+  ornaments: true, cornerStyle: "filigree", cornerSize: 64, gem: true, gemColor: "#2a9fb0", gemShape: "diamond", gemSize: 44,
 };
 
 /** Hazır görünümler: sadece farkları yazılır, kullanıcı parametreleri üstüne biner. */
 export const CONTAINER_THEMES: Record<ThemeName, Partial<ContainerParams>> = {
   "gold-stone": {},
-  "silver-slate": { background: "slate", pattern: "flagstone", frame: "silver", band: "slate", cornerStyle: "claw", gemColor: "#6fb4ff", gemShape: "round" },
+  "silver-slate": { background: "slate", pattern: "flagstone", frame: "silver", band: "slate", cornerStyle: "filigree", gemColor: "#5f9bd6", gemShape: "round" },
   "bronze-wood": { background: "wood", pattern: undefined, frame: "bronze", band: "wood", cornerStyle: "scroll", chamfer: false, radius: 12, gemColor: "#e0892a", gemShape: "hex" },
-  "ruby-blocks": { background: "stone", pattern: "blocks", frame: "gold", band: "slate", cornerStyle: "claw", gemColor: "#c0233a", gemShape: "diamond" },
+  "ruby-blocks": { background: "stone", pattern: "blocks", frame: "gold", band: "slate", cornerStyle: "filigree", gemColor: "#a8283a", gemShape: "diamond" },
   "emerald-bronze": { background: "slate", pattern: "blocks", frame: "bronze", band: "slate", cornerStyle: "scroll", gemColor: "#2fbf71", gemShape: "round" },
 };
 
@@ -64,13 +64,14 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
   // Süs pah kırık köşenin dışına taşmasın diye içeri alınır; slice marjı süsü kapsar (yoksa gerilir).
   const orn = p.chamfer ? Math.round(c0 * 0.5) : 2;
   const m = Math.max(t + 14, p.ornaments ? p.cornerSize + orn + 2 : 0), S = 2 * m + 96;
-  const g = Math.round(t * 0.42), rim = Math.max(3, Math.round(t * 0.12)), sl = t - g - rim;
-  // Köşe biçimi: pah ya da yuvarlak; iç halkalarda eşit kalınlık için küçülür (inset 2 = dış altın başlangıcı).
-  const corner = (inset: number) => (p.chamfer ? { chamfer: Math.max(0, Math.round(c0 - (inset - 2) * 0.586)) } : { radius: Math.max(0, r - (inset - 2)) });
-  const metal = (seed: number) => ({ kind: "material" as const, preset: p.frame, seed, wear: p.wear });
+  // İnce altın çerçeve, geniş koyu bant (PC oyunu oranı); dış kontur 1 px.
+  const o = 1, g = Math.max(3, Math.round(t * 0.24)), rim = Math.max(2, Math.round(t * 0.1)), sl = t - g - rim;
+  // Köşe biçimi: pah ya da yuvarlak; iç halkalarda eşit kalınlık için küçülür (inset o = dış altın başlangıcı).
+  const corner = (inset: number) => (p.chamfer ? { chamfer: Math.max(0, Math.round(c0 - (inset - o) * 0.586)) } : { radius: Math.max(0, r - (inset - o)) });
+  const metal = (seed: number, wear = p.wear * 0.5) => ({ kind: "material" as const, preset: p.frame, seed, wear });
 
   // Çatlaklar sadece bantlarda: her köşede üst/alt bant boyunca yatay, yan bant boyunca dikey birer çatlak.
-  const cw = m - 12, b0 = Math.round(t * 0.3), bh = Math.round(t * 0.4), cracks: Record<string, unknown>[] = [];
+  const cw = m - 12, b0 = o + g + 3, bh = Math.max(4, sl - 6), cracks: Record<string, unknown>[] = [];
   [[1, 1], [-1, 1], [1, -1], [-1, -1]].forEach(([sx, sy], k) => {
     const at = (x0: number, y0: number, w: number, h: number) => ({ x: sx > 0 ? x0 : S - x0 - w, y: sy > 0 ? y0 : S - y0 - h, w, h });
     cracks.push({ id: `crack_h${k}`, kind: "cracks", ...at(8, b0, cw, bh), count: 1, length: Math.round(m * 0.5), seed: 11 + k, direction: 0 });
@@ -81,20 +82,20 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
     { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: p.background, pattern: p.pattern, seed: 5, wear: p.wear * 0.8 } },
   ] });
   const frame = DesignSchema.parse({ id: `${id}_frame`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: [
-    { id: "outline", kind: "ring", inset: 0, thickness: t + 5, ...corner(0), fill: { kind: "solid", color: "#1a1008" } },
-    { id: "gold_outer", kind: "ring", inset: 2, thickness: g, ...corner(2), fill: metal(3),
-      effects: [{ kind: "bevel", depth: 6, size: Math.max(3, Math.round(g * 0.5)) }, { kind: "shadow", dx: 0, dy: 2, blur: 2, opacity: 0.5 }] },
-    { id: "slate", kind: "ring", inset: 2 + g, thickness: sl, ...corner(2 + g),
-      fill: { kind: "material", preset: p.band, pattern: "rough", scale: 2.2, seed: 6, wear: p.wear * 0.4 },
-      effects: [{ kind: "innerShadow", blur: 4, dy: 2, opacity: 0.8 }] },
-    { id: "gold_rim", kind: "ring", inset: 2 + g + sl, thickness: rim, ...corner(2 + g + sl), fill: metal(5),
-      effects: [{ kind: "bevel", depth: 3, size: Math.max(2, rim - 1) }, { kind: "shadow", dx: 0, dy: 1, blur: 1.5, opacity: 0.6 }] },
+    { id: "outline", kind: "ring", inset: 0, thickness: t + o + 3, ...corner(0), fill: { kind: "solid", color: "#120b05" } },
+    { id: "gold_outer", kind: "ring", inset: o, thickness: g, ...corner(o), fill: metal(3),
+      effects: [{ kind: "bevel", depth: 4, size: Math.max(2, Math.round(g * 0.6)) }, { kind: "shadow", dx: 0, dy: 2, blur: 4, opacity: 0.7 }] },
+    { id: "slate", kind: "ring", inset: o + g, thickness: sl, ...corner(o + g),
+      fill: { kind: "material", preset: p.band, pattern: "fine", scale: 2.2, seed: 6, wear: p.wear * 0.25 },
+      effects: [{ kind: "innerShadow", blur: 6, dy: 2, opacity: 0.9 }] },
+    { id: "gold_rim", kind: "ring", inset: o + g + sl, thickness: rim, ...corner(o + g + sl), fill: metal(5),
+      effects: [{ kind: "bevel", depth: 3, size: Math.max(2, rim - 1) }, { kind: "shadow", dx: 0, dy: 2, blur: 3, opacity: 0.75 }] },
     // iç dudak: açıklığa yumuşak gölge düşürür
-    { id: "lip", kind: "ring", inset: 2 + t, thickness: 3, ...corner(2 + t), fill: { kind: "solid", color: "#0e0905", opacity: 0.9 },
+    { id: "lip", kind: "ring", inset: o + t, thickness: 3, ...corner(o + t), fill: { kind: "solid", color: "#0e0905", opacity: 0.9 },
       effects: [{ kind: "shadow", dx: 0, dy: 3, blur: 7, opacity: 0.75 }] },
     ...(p.cracks ? cracks : []),
-    ...(p.ornaments ? [{ id: "corners", kind: "corners", style: p.cornerStyle, size: p.cornerSize, inset: orn, fill: metal(4),
-      stroke: { color: "#1a1008", width: 1.6 }, effects: [{ kind: "bevel", depth: 5, size: 6 }, { kind: "shadow", dx: 1, dy: 3, blur: 3, opacity: 0.6 }] }] : []),
+    ...(p.ornaments ? [{ id: "corners", kind: "corners", style: p.cornerStyle, size: p.cornerSize, inset: orn, fill: metal(4, p.wear),
+      stroke: { color: "#120b05", width: 1, opacity: 0.85 }, effects: [{ kind: "bevel", depth: 3, size: 3 }, { kind: "shadow", dx: 1, dy: 2, blur: 3, opacity: 0.75 }] }] : []),
   ] });
 
   const G = Math.round(p.gemSize * 2.2);

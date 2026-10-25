@@ -77,7 +77,7 @@ export const LayerSchema = z.discriminatedUnion("kind", [
     kind: z.literal("gem"), cx: num, cy: num, size: num.positive(), color: Color,
     shape: z.enum(["diamond", "round", "hex"]).optional(), setting: z.enum(["gold", "none"]).optional() }).strict(),
   // Köşe süsü: kıvrımlı bıçaklar (+ orta kabartma). fill/stroke/effects her parçaya uygulanır. Boyut slice marjını aşmamalı (gerilmesin).
-  z.object({ ...common, kind: z.literal("corners"), style: z.enum(["blade", "scroll", "claw"]), size: num.positive(), inset: num.min(0).optional(),
+  z.object({ ...common, kind: z.literal("corners"), style: z.enum(["blade", "scroll", "claw", "filigree"]), size: num.positive(), inset: num.min(0).optional(),
     which: z.array(z.enum(["tl", "tr", "bl", "br"])).min(1).optional(), studs: z.boolean().optional() }).strict(),
   // Açık uçlu çizgi (çatlak, tel, oyuk): stroke zorunlu; closed=true ise kapanır.
   z.object({ ...common, kind: z.literal("line"), points: z.array(z.tuple([num, num])).min(2), closed: z.boolean().optional() }).strict(),
@@ -276,18 +276,29 @@ const STUD: Pt[] = [[44, 26], [62, 44], [44, 62], [26, 44]];
 function scrollShape(): Pt[] {
   const P: Pt[] = [[22, 50], [52, 52], [86, 32], [118, 32]], C: Pt = [118, 58], center: Pt[] = [P[0], ...cubic(P[0], P[1], P[2], P[3], 24)];
   for (let k = 1; k <= 48; k++) { const f = k / 48, th = -Math.PI / 2 + f * 3 * Math.PI, r = 26 - f * 20; center.push([C[0] + r * Math.cos(th), C[1] + r * Math.sin(th)]); }
+  return ribbon(center, 13, 3);
+}
+const SCROLL = scrollShape();
+
+/** Orta çizgi boyunca kalınlığı w0'dan w1'e doğrusal değişen şerit (çokgen): ince, uca doğru sivrilen kıvrımlar için. */
+function ribbon(center: Pt[], w0: number, w1: number): Pt[] {
   const left: Pt[] = [], right: Pt[] = [], n = center.length;
   center.forEach(([x, y], i) => {
     const [ax, ay] = center[Math.max(0, i - 1)], [bx, by] = center[Math.min(n - 1, i + 1)], len = Math.hypot(bx - ax, by - ay) || 1;
-    const nx = -(by - ay) / len, ny = (bx - ax) / len, w = (17 - 12 * (i / (n - 1))) / 2;
+    const nx = -(by - ay) / len, ny = (bx - ax) / len, w = (w0 + (w1 - w0) * (i / (n - 1))) / 2;
     left.push([x + nx * w, y + ny * w]); right.push([x - nx * w, y - ny * w]);
   });
   return [...left, ...right.reverse()];
 }
-const SCROLL = scrollShape();
+const path = (...segs: [Pt, Pt, Pt, Pt, number][]): Pt[] => segs.flatMap(([a, b, c, d, n], i) => (i ? cubic(a, b, c, d, n) : [a, ...cubic(a, b, c, d, n)]));
+// filigran: koyu bandın içine oturan diken kümesi. Her diken tabanda geniş, ucu kıvrık sivri, alt kenarı içbükey (iki kol köşegende
+// aynalanır) + köşegen boyunca içe bakan simetrik bir diken; ortada küçük elmas.
+const FIL_ARM: Pt[] = [[34, 32], ...cubic([34, 32], [58, 20], [92, 30], [132, 12], 18), ...cubic([132, 12], [106, 38], [80, 40], [60, 58], 18)];
+const FIL_THORN: Pt[] = [[48, 72], ...cubic([48, 72], [72, 76], [88, 84], [98, 98], 14), ...cubic([98, 98], [84, 88], [76, 72], [72, 48], 14)];
 const CLAW_A: Pt[] = [[40, 18], ...cubic([40, 18], [80, 14], [116, 22], [152, 46]), ...cubic([152, 46], [112, 36], [78, 36], [42, 42])];
 const CLAW_C: Pt[] = [[30, 56], ...cubic([30, 56], [62, 58], [90, 78], [108, 108]), ...cubic([108, 108], [78, 90], [58, 62], [56, 30])];
-const ORNAMENTS: Record<"blade" | "scroll" | "claw", [string, Pt[]][]> = {
+const ORNAMENTS: Record<"blade" | "scroll" | "claw" | "filigree", [string, Pt[]][]> = {
+  filigree: [["arm_a", FIL_ARM], ["arm_b", swap(FIL_ARM)], ["thorn", FIL_THORN]],
   blade: [["horn_a", BLADE], ["horn_b", swap(BLADE)], ["thorn", THORN]],
   scroll: [["scroll_a", SCROLL], ["scroll_b", swap(SCROLL)]],
   claw: [["claw_a", CLAW_A], ["claw_b", swap(CLAW_A)], ["claw_c", CLAW_C]],

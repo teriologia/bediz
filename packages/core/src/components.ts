@@ -9,11 +9,11 @@ const Hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "renk #RRGGBB olmalı");
 
 /** Tema başına bileşen renkleri: yüzey degradesi (üst/alt), yazı, çubuk dolgusu. Metal, container temasından gelir. */
 const LOOK: Record<ThemeName, { top: string; bottom: string; text: string; fill: string }> = {
-  "gold-stone": { top: "#33403f", bottom: "#161d1f", text: "#f2d27a", fill: "#3fae5a" },
-  "silver-slate": { top: "#2f4254", bottom: "#121a22", text: "#e8eef5", fill: "#4aa3ff" },
-  "bronze-wood": { top: "#553719", bottom: "#24150a", text: "#f0c590", fill: "#e0892a" },
-  "ruby-blocks": { top: "#5d1722", bottom: "#2a0a10", text: "#f2d27a", fill: "#c0233a" },
-  "emerald-bronze": { top: "#1a4d3d", bottom: "#0b241c", text: "#f0c590", fill: "#2fbf71" },
+  "gold-stone": { top: "#2e3a39", bottom: "#141a1c", text: "#d8bf86", fill: "#4a9a5c" },
+  "silver-slate": { top: "#2b3b4a", bottom: "#10171e", text: "#cfd6df", fill: "#4a86c4" },
+  "bronze-wood": { top: "#4a3018", bottom: "#20130a", text: "#d8b48a", fill: "#c47a30" },
+  "ruby-blocks": { top: "#521620", bottom: "#260a0f", text: "#d8bf86", fill: "#a8283a" },
+  "emerald-bronze": { top: "#18443a", bottom: "#0a2019", text: "#d8b48a", fill: "#3a9a68" },
 };
 export { LOOK as THEME_LOOK };
 const metalOf = (theme: ThemeName, frame?: MaterialPreset): MaterialPreset => frame ?? CONTAINER_THEMES[theme].frame ?? "gold";

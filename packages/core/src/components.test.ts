@@ -24,7 +24,7 @@ assert.equal(btn.type, "Button");
 assert.equal(btn.brush!.asset, "play_normal");
 assert.deepEqual(btn.states, { hovered: { asset: "play_hovered" }, pressed: { asset: "play_pressed" }, disabled: { asset: "play_disabled" } });
 assert.equal(btn.children[0].text, "OYNA");
-assert.equal(buttonRecipe({ id: "x", theme: "silver-slate" }).widget.root.children[0].children[0].color, "#e8eef5");
+assert.equal(buttonRecipe({ id: "x", theme: "silver-slate" }).widget.root.children[0].children[0].color, "#cfd6df");
 assert.equal(buttonRecipe({ id: "x", textColor: "#112233" }).widget.root.children[0].children[0].color, "#112233");
 assert.throws(() => buttonRecipe({ id: "../x" }), /id/);
 assert.throws(() => buttonRecipe({ id: "x", bogus: 1 } as never));

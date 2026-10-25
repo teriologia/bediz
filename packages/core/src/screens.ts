@@ -2,7 +2,7 @@ import { z } from "zod";
 import { barRecipe, buttonRecipe, slotRecipe, THEME_LOOK } from "./components.js";
 import { CONTAINER_THEMES, THEME_NAMES, containerRecipe, type ThemeName } from "./container.js";
 import { DesignSchema, type Design } from "./design.js";
-import { MATERIAL_PRESETS } from "./material.js";
+import { MATERIAL_PRESETS, type MaterialPreset, type StonePattern } from "./material.js";
 import { WidgetSchema, type Node, type Widget } from "./scene.js";
 import type { TextMeasure } from "./layout.js";
 
@@ -30,10 +30,10 @@ export const approxMeasure = approx;
 const lineH = (fs: number) => Math.ceil(fs * (96 / 72) * 1.17);
 
 /** Temanın zemin dokusu, siyahla karartılmış döşeme (ekran arka planı ve panel zemini için; okunaklı yazı). */
-function backdrop(id: string, theme: ThemeName, dim = 0.62, name = "backdrop"): Design {
+function backdrop(id: string, theme: ThemeName, dim = 0.62, name = "backdrop", mat?: { preset: MaterialPreset; pattern?: StonePattern }): Design {
   const c = CONTAINER_THEMES[theme];
   return DesignSchema.parse({ id: `${id}_${name}`, kind: "tile", width: 256, height: 256, layers: [
-    { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: c.background ?? "stone", pattern: c.pattern, seed: 21, wear: 0.3 } },
+    { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: mat?.preset ?? c.background ?? "stone", pattern: mat ? mat.pattern : c.pattern, seed: 21, wear: 0.3 } },
     { id: "dim", kind: "box", inset: 0, fill: { kind: "solid", color: "#000000", opacity: dim } },
   ] });
 }
@@ -48,7 +48,7 @@ function panel(id: string, theme: ThemeName, o: { frame?: z.infer<typeof base.fr
   // Panel, başlık ve gövdenin gerektirdiği genişliğe açılır (uzun başlık çerçeveden taşmasın).
   const need = Math.max(o.measure(o.title, o.titleSize).w + 24, o.minInner ?? 0) + 2 * (t + 26);
   const width = Math.max(o.width, need);
-  const G = r.gem?.width ?? 0, zemin = backdrop(id, theme, 0.55, "panelbg"); // panel zemini karartılır: yazılar okunur
+  const G = r.gem?.width ?? 0, zemin = backdrop(id, theme, 0.3, "panelbg", { preset: CONTAINER_THEMES[theme].band ?? "slate", pattern: "fine" }); // koyu, ince taneli iç yüzey: yazılar okunur, panel arka plandan ayrışır
   const contentTop = r.gem ? Math.round(t * 0.45 + G / 2) + 8 : t + 20;
   const titleH = lineH(o.titleSize) + 20;
   const height = contentTop + titleH + o.bodyHeight + (o.footerHeight ?? 0) + t + 26;

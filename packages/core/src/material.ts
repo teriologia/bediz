@@ -5,7 +5,7 @@
 
 export const MATERIAL_PRESETS = ["stone", "slate", "gold", "silver", "bronze", "wood"] as const;
 export type MaterialPreset = (typeof MATERIAL_PRESETS)[number];
-export const STONE_PATTERNS = ["flagstone", "blocks", "rough"] as const;
+export const STONE_PATTERNS = ["flagstone", "blocks", "rough", "fine"] as const;
 export type StonePattern = (typeof STONE_PATTERNS)[number];
 
 export interface MaterialParams {
@@ -20,11 +20,11 @@ export interface Bevel { depth: number; size?: number; azimuth?: number } // dep
 
 interface Def { family: "stone" | "metal" | "wood"; ramp: string[]; amp: number; spec: number; pattern?: StonePattern; cells?: number }
 const DEFS: Record<MaterialPreset, Def> = {
-  stone: { family: "stone", ramp: ["#4d4943", "#7a7469", "#a29a8b", "#c2b9a7"], amp: 3, spec: 0.1, pattern: "flagstone" },
-  slate: { family: "stone", ramp: ["#10161a", "#212b30", "#37454a", "#51626a"], amp: 2.2, spec: 0.25, pattern: "flagstone", cells: 0.75 },
-  gold: { family: "metal", ramp: ["#2e1b06", "#6e4710", "#b98a2a", "#e6bf55", "#fbe9a0"], amp: 0.7, spec: 1 },
-  silver: { family: "metal", ramp: ["#1c1f24", "#4a505a", "#8d95a1", "#cfd5dd", "#ffffff"], amp: 0.6, spec: 1 },
-  bronze: { family: "metal", ramp: ["#24120a", "#5c3318", "#9a5f2c", "#c98a4a", "#f0c590"], amp: 0.8, spec: 0.8 },
+  stone: { family: "stone", ramp: ["#3e3a35", "#645f56", "#8b8374", "#a79e8d"], amp: 3, spec: 0.08, pattern: "flagstone" },
+  slate: { family: "stone", ramp: ["#0b1013", "#18211f", "#26312f", "#38453f"], amp: 2.2, spec: 0.15, pattern: "flagstone", cells: 0.75 },
+  gold: { family: "metal", ramp: ["#150e07", "#3a2810", "#6a4f23", "#9a7a3f", "#cdb072"], amp: 0.7, spec: 0.55 },
+  silver: { family: "metal", ramp: ["#101216", "#30353d", "#5f6671", "#939ba7", "#cdd3db"], amp: 0.6, spec: 0.55 },
+  bronze: { family: "metal", ramp: ["#150a05", "#3d2210", "#6e4322", "#9b6a3c", "#c79a68"], amp: 0.8, spec: 0.5 },
   wood: { family: "wood", ramp: ["#2b190b", "#4d2f16", "#7a5229", "#a07842"], amp: 1.2, spec: 0.15 },
 };
 export const materialDefaults = () => Object.fromEntries(MATERIAL_PRESETS.map((k) => [k, { colors: DEFS[k].ramp, pattern: DEFS[k].pattern }]));
@@ -121,7 +121,7 @@ function rampFn(colors: string[]) {
 // ---------- malzeme alanları ----------
 interface Fields { H: Float32Array; tone: Float32Array; dark: Float32Array; sp: Float32Array }
 
-function fields(def: Def, p: MaterialParams, w: number, h: number): Fields {
+function fields(def: Def, p: MaterialParams, w: number, h: number, dist?: Float32Array): Fields {
   const n = w * h, H = new Float32Array(n), tone = new Float32Array(n), dark = new Float32Array(n).fill(1), sp = new Float32Array(n).fill(def.spec);
   const seed = p.seed ?? 1, sc = p.scale ?? 1;
   const amp = def.amp;
@@ -146,24 +146,43 @@ function fields(def: Def, p: MaterialParams, w: number, h: number): Fields {
         const wo = worley(u, v, nx, ny, seed);
         d = (wo.f2 - wo.f1) * 0.5 * cellPx;
         id = wo.id;
-      } else id = fbm(u, v, rnd(w, 90), rnd(h, 90), 2, seed + 2);
+      } else id = fbm(u, v, rnd(w, 90), rnd(h, 90), 2, seed + 2); // rough / fine
       const mottle = fbm(u, v, rnd(w, 70), rnd(h, 70), 4, seed + 3);
       const detail = fbm(u, v, rnd(w, 9), rnd(h, 9), 2, seed + 5);
       if (d < gap) { // harç / aralık
         H[i] = -2.5 + (detail - 0.5) * 0.8; tone[i] = 0.02; dark[i] = 0.76; sp[i] = 0;
       } else {
         const t = clamp((d - gap) / round), top = Math.sqrt(1 - (1 - t) * (1 - t));
-        H[i] = amp * top + (detail - 0.5) * amp * 0.7 + (mottle - 0.5) * amp * 0.4;
-        tone[i] = clamp(0.5 + (id - 0.5) * 0.6 + (mottle - 0.5) * 0.55);
-        const wc = worley(u, v, nx2, ny2, seed + 50); // ince çatlaklar
-        if (wc.id > 0.62 && (wc.f2 - wc.f1) * 0.5 * cell2 < 0.8) { H[i] -= 1.4; dark[i] = 0.6; }
+        const fine = pattern === "fine";
+        // fine: düz yüzey, düşük kontrastlı tane (koyu arduvaz/boyalı taş); yapı çizgisi yok
+        H[i] = fine ? (detail - 0.5) * amp * 0.45 : amp * top + (detail - 0.5) * amp * 0.7 + (mottle - 0.5) * amp * 0.4;
+        tone[i] = fine ? clamp(0.45 + (id - 0.5) * 0.25 + (mottle - 0.5) * 0.3 + (detail - 0.5) * 0.35) : clamp(0.5 + (id - 0.5) * 0.6 + (mottle - 0.5) * 0.55);
+        if (pattern === "flagstone" || pattern === "blocks") {
+          const wc = worley(u, v, nx2, ny2, seed + 50); // ince çatlaklar
+          if (wc.id > 0.62 && (wc.f2 - wc.f1) * 0.5 * cell2 < 0.8) { H[i] -= 1.4; dark[i] = 0.6; }
+        }
       }
     }
   } else if (def.family === "metal") {
     const nxs = rnd(w, 200 / sc), nys = Math.max(2, rnd(h, 1.4)), nxf = rnd(w, 40), nyf = Math.max(2, rnd(h, 1.2));
+    // Kenara uzaklığın gradyanı kenarı dik keser; fırça darbeleri teğet boyunca akar (üstte yatay, yanlarda dikey, köşede çapraz).
+    // Yönün işareti sabitlenir (orta eksende kopukluk olmasın); gradyan yoksa yatay.
+    const D = dist && Float32Array.from(dist, (d) => Math.min(d, 24));
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const i = y * w + x, u = (x + 0.5) / w, v = (y + 0.5) / h;
-      const streak = vnoise(u * nxs, v * nys, nxs, nys, seed), scratch = vnoise(u * nxf, v * nyf, nxf, nyf, seed + 4);
+      let streak: number, scratch: number;
+      if (D) {
+        const gx = D[y * w + Math.min(w - 1, x + 1)] - D[y * w + Math.max(0, x - 1)], gy = D[Math.min(h - 1, y + 1) * w + x] - D[Math.max(0, y - 1) * w + x];
+        const gl = Math.hypot(gx, gy);
+        let tx = gl > 0.2 ? -gy / gl : 1, ty = gl > 0.2 ? gx / gl : 0;
+        if (tx < 0 || (tx === 0 && ty < 0)) { tx = -tx; ty = -ty; }
+        const along = x * tx + y * ty + 4096, across = -x * ty + y * tx + 4096;
+        streak = vnoise(along / (200 / sc), across / 1.4, 8192, 8192, seed);
+        scratch = vnoise(along / 40, across / 1.2, 8192, 8192, seed + 4);
+      } else {
+        streak = vnoise(u * nxs, v * nys, nxs, nys, seed);
+        scratch = vnoise(u * nxf, v * nyf, nxf, nyf, seed + 4);
+      }
       const mott = fbm(u, v, rnd(w, 120), rnd(h, 120), 3, seed + 9);
       H[i] = (streak - 0.5) * amp * 0.45 + (scratch - 0.5) * amp * 0.25 + (mott - 0.5) * amp * 2.4;
       tone[i] = (mott - 0.5) * 0.28 + Math.cos(2 * Math.PI * (u + v)) * 0.15 + Math.cos(2 * Math.PI * (u - 2 * v) + 1) * 0.05; // geniş parlama süpürmesi (periyodik)
@@ -194,8 +213,8 @@ export interface MaterialInput {
 /** Maskelenmiş şekli malzemeyle boyar; RGBA (alfa = maske) döndürür. */
 export function shadeMaterial(inp: MaterialInput): Uint8Array {
   const { w, h, mask } = inp, n = w * h, def = DEFS[inp.fill.preset];
-  const F = fields(def, inp.fill, w, h);
   const dist = inp.tileable ? new Float32Array(n).fill(1e9) : edgeDistance(mask, w, h);
+  const F = fields(def, inp.fill, w, h, inp.tileable ? undefined : dist);
   const bd = inp.bevel?.depth ?? 0, bw = Math.max(1, inp.bevel?.size ?? Math.max(3, bd * 1.2));
   const H = new Float32Array(n);
   for (let i = 0; i < n; i++) {
