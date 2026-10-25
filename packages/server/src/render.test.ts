@@ -3,6 +3,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
+import { DesignSchema } from "@bediz/core";
+import { renderDesignPng } from "./design-render.js";
 import { renderNineSlice, tileTo } from "./render.js";
 
 // 30x30 kaynak: 10px kenarlı 3x3 ızgara, her bölge ayrı renk (R = sütun, G = satır).
@@ -31,4 +33,16 @@ const big = await sharp(await tileTo(path, 100, 100)).raw().toBuffer({ resolveWi
 const at = (x: number, y: number) => [...big.data.subarray((y * 100 + x) * big.info.channels, (y * 100 + x) * big.info.channels + 3)];
 assert.deepEqual(at(5, 7), at(35, 7), "30px'lik tile x ekseninde periyodik");
 assert.deepEqual(at(5, 7), at(5, 37), "y ekseninde periyodik");
+// symmetry: yalnızca sol yarı çizilir; dokulu, bevel'li katmanda bile çıktı piksel piksel aynalıdır (tek sayılı genişlik dahil)
+for (const [W, H, mode] of [[121, 60, "x"], [60, 71, "y"], [61, 61, "xy"]] as const) {
+  const d = DesignSchema.parse({ id: "sym", kind: "sprite", width: W, height: H, symmetry: mode, layers: [
+    { id: "a", kind: "polygon", points: [[8, 8], [W * 0.45, 10], [W * 0.3, H * 0.8]], fill: { kind: "material", preset: "gold", seed: 3, wear: 0.4 }, effects: [{ kind: "bevel", depth: 4, size: 4 }] }] });
+  const { data } = await sharp(await renderDesignPng(d)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const px = (x: number, y: number) => [...data.subarray((y * W + x) * 4, (y * W + x) * 4 + 4)].join();
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (mode !== "y") assert.equal(px(x, y), px(W - 1 - x, y), `${mode}: x yansıması (${x},${y})`);
+    if (mode !== "x") assert.equal(px(x, y), px(x, H - 1 - y), `${mode}: y yansıması (${x},${y})`);
+  }
+}
+assert.throws(() => DesignSchema.parse({ id: "t", kind: "tile", width: 16, height: 16, symmetry: "x", layers: [] }), /symmetry/);
 console.log("render ok");

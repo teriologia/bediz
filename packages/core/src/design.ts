@@ -107,7 +107,10 @@ export const DesignSchema = z.object({
   height: z.number().int().min(8).max(2048),
   slice: SliceSchema.optional(),
   layers: z.array(LayerSchema),
+  // Simetri: sol (x), üst (y) ya da sol-üst çeyrek (xy) çizilir, kalanı PNG çıktısında aynalanır; ışık, doku ve çatlaklar birebir yansır (ışık dış kenarlardan gelir).
+  symmetry: z.enum(["x", "y", "xy"]).optional(),
 }).strict().superRefine((d, ctx) => {
+  if (d.symmetry && d.kind === "tile") ctx.addIssue({ code: "custom", message: "tile tasarımında symmetry olmaz (dikişsizlik bozulur)" });
   if (d.kind === "frame9") {
     if (!d.slice) return ctx.addIssue({ code: "custom", message: "frame9 için slice gerekli" });
     try { validateSlice(d.slice, d.width, d.height); } catch (e) { ctx.addIssue({ code: "custom", message: (e as Error).message }); }

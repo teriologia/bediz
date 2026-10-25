@@ -35,6 +35,22 @@ async function materialLayer(d: Design, l: MaterialShape): Promise<sharp.Overlay
   return parts;
 }
 
+/** Sol/üst yarıyı aynalayıp karşı yarının yerine koyar (tek sayıda piksel varsa orta sütun/satır yarıyla gelir, çakışma olmaz). */
+async function mirrorHalves(png: Buffer, w: number, h: number, mode: "x" | "y" | "xy"): Promise<Buffer> {
+  const half = async (src: Buffer, horizontal: boolean) => {
+    const keep = Math.ceil((horizontal ? w : h) / 2), mir = Math.floor((horizontal ? w : h) / 2);
+    const region = (n: number) => (horizontal ? { left: 0, top: 0, width: n, height: h } : { left: 0, top: 0, width: w, height: n });
+    const a = await sharp(src).extract(region(keep)).png().toBuffer();
+    const b = await sharp(src).extract(region(mir))[horizontal ? "flop" : "flip"]().png().toBuffer();
+    return sharp({ create: { width: w, height: h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: a, left: 0, top: 0 }, { input: b, left: horizontal ? w - mir : 0, top: horizontal ? 0 : h - mir }]).png().toBuffer();
+  };
+  let cur = png;
+  if (mode !== "y") cur = await half(cur, true);
+  if (mode !== "x") cur = await half(cur, false);
+  return cur;
+}
+
 /**
  * Tasarımı PNG'ye çizer. Katmanlar sırayla çizilir: `material` dolgulu olanlar CPU hattında, diğerleri SVG'de.
  * shortcut: her katman tuval boyutunda ayrı rasterlanır; çok katmanlı ve çok büyük (2048²) tasarımlarda yavaşlar.
@@ -51,5 +67,6 @@ export async function renderDesignPng(d: Design, background?: string): Promise<B
     const { data, info } = await sharp(await img.png().toBuffer()).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     img = sharp(makeSeamless(data, info.width, info.height), { raw: { width: info.width, height: info.height, channels: 4 } });
   }
+  if (d.symmetry) img = sharp(await mirrorHalves(await img.png().toBuffer(), d.width, d.height, d.symmetry));
   return (background ? img.flatten({ background }) : img).png().toBuffer();
 }
