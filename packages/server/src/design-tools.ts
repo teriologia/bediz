@@ -75,6 +75,9 @@ export function registerDesignTools(server: McpServer) {
         fills: "solid{color,opacity} · linear{angle,stops} · radial{stops,cx?,cy?,r?} (durak rengi #RRGGBBAA olabilir: saydama sönen vinyet/ışık) · material{preset,pattern?,colors?,scale?,seed?,wear?(0..1: kenar aşınması+kir)} · texture{...eski}",
         effects: "bevel{depth,size,azimuth,highlight} · shadow{dx,dy,blur,color,opacity} · innerShadow · glow · grain{amount,size,seed} (koyulaştıran ince gren, material dışı katmanlarda). Sıra önemli (üstten uygulanır). Katman blend: multiply|screen|overlay|soft-light|lighten|darken. Tasarım symmetry: x|y|xy (yalnız sol/üst yarıyı yaz, kalanı aynalanır; tile'da olmaz).",
         tips: [
+          "UI'ı TEK RESİM olarak çizme (tam ekran sprite + üstüne yazı): sekme, buton, çerçeve resmin içinde kalır, tıklanamaz, durumu/9-slice'ı olmaz, başka ekranda kullanılamaz. Her parça ayrı bileşen olsun: çerçeve/panel = frame9, buton = create_button ya da derive_button_states, madalyon/süs = ayrı sprite; hepsini widget'ta Image/Button node'larıyla yerleştir.",
+          "Yazıyı ortalamak için sol koordinatı tahmin etme (kayar): ya Overlay içine TextBlock koy ve slot'una hAlign:Center (+ vAlign:Center) ver ya da canvas slotunda anchors orta noktası (minX=maxX=0.5) + alignment {x:0.5} + autoSize:true kullan. Aralıklı sütunlar için HorizontalBox/VerticalBox kullan, tek tek offset yazma.",
+          "Etiket butonun içine sığmalı: genişliği metin ölçüsünden büyük ver (silüetli butonlarda uç bölgeleri iç alanı daraltır) ve önizlemede taşma/çakışma var mı kontrol et.",
           "Katmanlar alttan üste çizilir (dizideki sıra).",
           "Altın çerçeve: ring + texture gold + bevel + hafif shadow; altına koyu ring ile dış çizgi ekle.",
           "frame9 slice ≥ çerçeve kalınlığı + köşe yarıçapı. Ortada 64px+ düz bölge bırak.",
@@ -90,7 +93,7 @@ export function registerDesignTools(server: McpServer) {
     "create_design",
     "Boş bir tasarım (tuval) oluşturur. kind: frame9 (slice gerekli) | tile | sprite. Sonra add_layer ile çiz.",
     { id: designId, kind: z.enum(DESIGN_KINDS), width: z.number().int().min(8).max(2048), height: z.number().int().min(8).max(2048),
-      slice: SliceSchema.optional(), layers: z.array(LayerSchema).optional() },
+      slice: SliceSchema.optional(), symmetry: z.enum(["x", "y", "xy"]).optional(), layers: z.array(LayerSchema).optional() },
     async ({ id, layers, ...rest }) => {
       if (designs.has(id)) throw new Error(`tasarım zaten var: ${id}`);
       const d = DesignSchema.parse({ id, ...rest, layers: layers ?? [] });
@@ -104,7 +107,7 @@ export function registerDesignTools(server: McpServer) {
   server.tool(
     "update_design",
     "Tasarımın boyutunu ve/veya slice'ını değiştirir.",
-    { design: z.string(), width: z.number().int().min(8).max(2048).optional(), height: z.number().int().min(8).max(2048).optional(), slice: SliceSchema.optional() },
+    { design: z.string(), width: z.number().int().min(8).max(2048).optional(), height: z.number().int().min(8).max(2048).optional(), slice: SliceSchema.optional(), symmetry: z.enum(["x", "y", "xy"]).optional() },
     async ({ design, ...p }) => ({ content: [text(commit(design, (d) => Object.assign(d, p)))] }),
   );
 
