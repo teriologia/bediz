@@ -6,7 +6,8 @@
   ],
   "scripts": {
     "build": "tsc -b packages/core packages/server",
-    "test": "npm test --workspaces --if-present"
+    "test": "npm test --workspaces --if-present",
+    "build:editor": "npm run build -w @bediz/editor"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
