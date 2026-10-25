@@ -87,7 +87,8 @@ export const LayerSchema = z.discriminatedUnion("kind", [
   // Hazır mücevher: faset + (isteğe bağlı) altın yuva. fill/effects kullanmaz.
   z.object({ id: z.string().min(1), name: z.string().optional(), opacity: z.number().min(0).max(1).optional(), hidden: z.boolean().optional(),
     kind: z.literal("gem"), cx: num, cy: num, size: num.positive(), color: Color,
-    shape: z.enum(["diamond", "round", "hex"]).optional(), setting: z.enum(["gold", "none"]).optional() }).strict(),
+    shape: z.enum(["diamond", "round", "hex"]).optional(), setting: z.enum(["gold", "none"]).optional(),
+    settingColors: z.array(Color).min(2).max(6).optional() }).strict(), // settingColors: yuva metalinin koyu→açık rampası (varsayılan altın)
   // Köşe süsü: kıvrımlı bıçaklar (+ orta kabartma). fill/stroke/effects her parçaya uygulanır. Boyut slice marjını aşmamalı (gerilmesin).
   z.object({ ...common, kind: z.literal("corners"), style: z.enum(["blade", "scroll", "claw", "filigree"]), size: num.positive(), inset: num.min(0).optional(),
     which: z.array(z.enum(["tl", "tr", "bl", "br"])).min(1).optional(), studs: z.boolean().optional() }).strict(),
@@ -273,7 +274,7 @@ function expandGem(g: Extract<Layer, { kind: "gem" }>): Layer[] {
     ? Array.from({ length: 6 }, (_, i) => [cx + rr * Math.cos((Math.PI / 3) * i), cy + rr * Math.sin((Math.PI / 3) * i)] as [number, number])
     : shape === "round" ? [] : [[cx, cy - rr], [cx + rr * k, cy], [cx, cy + rr], [cx - rr * k, cy]];
   const gold = (sub: string, shapeL: Shape): Layer => ({ ...shapeL, id: `${id}__${sub}`,
-    fill: { kind: "material", preset: "gold", scale: 1.4 }, stroke: { color: "#1a1008", width: 2 },
+    fill: { kind: "material", preset: "gold", ...(g.settingColors ? { colors: g.settingColors } : {}), scale: 1.4 }, stroke: { color: "#1a1008", width: 2 },
     effects: [{ kind: "bevel", depth: 2.5, size: 4 }, { kind: "shadow", dx: 1.5, dy: 3, blur: 3, opacity: 0.6 }] } as Layer);
   if ((g.setting ?? "gold") === "gold") {
     out.push(shape === "round"

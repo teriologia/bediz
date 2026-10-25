@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { barRecipe, buttonRecipe, slotRecipe, THEME_LOOK } from "./components.js";
-import { CONTAINER_THEMES, THEME_NAMES, containerRecipe, type ThemeName } from "./container.js";
+import { CONTAINER_THEMES, ThemeSchema, containerRecipe, rampsOf, type ThemeName } from "./container.js";
 import { DesignSchema, type Design } from "./design.js";
 import { MATERIAL_PRESETS, type MaterialPreset, type StonePattern } from "./material.js";
 import { WidgetSchema, type Node, type Widget } from "./scene.js";
@@ -15,7 +15,7 @@ export interface ScreenRecipe { theme: ThemeName; designs: Design[]; widget: Wid
 
 const Id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "id sadece harf, rakam, _ ve - içerebilir (dosya adı olur)");
 const base = {
-  id: Id, theme: z.enum(THEME_NAMES).optional(), frame: z.enum(MATERIAL_PRESETS).optional(), gem: z.boolean().optional(), style: z.enum(["metal", "ghost"]).optional(), // ghost: ince çizgili panel/bileşenler, mücevhersiz
+  id: Id, theme: ThemeSchema.optional(), frame: z.enum(MATERIAL_PRESETS).optional(), gem: z.boolean().optional(), style: z.enum(["metal", "ghost"]).optional(), // ghost: ince çizgili panel/bileşenler, mücevhersiz
   width: z.number().int().min(640).max(3840).optional(), height: z.number().int().min(360).max(2160).optional(),
 };
 
@@ -31,9 +31,9 @@ const lineH = (fs: number) => Math.ceil(fs * (96 / 72) * 1.17);
 
 /** Temanın zemin dokusu, siyahla karartılmış döşeme (ekran arka planı ve panel zemini için; okunaklı yazı). */
 function backdrop(id: string, theme: ThemeName, dim = 0.62, name = "backdrop", mat?: { preset: MaterialPreset; pattern?: StonePattern }): Design {
-  const c = CONTAINER_THEMES[theme];
+  const c = CONTAINER_THEMES[theme], ramps = rampsOf(theme);
   return DesignSchema.parse({ id: `${id}_${name}`, kind: "tile", width: 256, height: 256, layers: [
-    { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: mat?.preset ?? c.background ?? "stone", pattern: mat ? mat.pattern : c.pattern, seed: 21, wear: 0.3 } },
+    { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: mat?.preset ?? c.background ?? "stone", pattern: mat ? mat.pattern : c.pattern, ...(ramps ? { colors: mat ? ramps.band : ramps.ground } : {}), seed: 21, wear: 0.3 } },
     { id: "dim", kind: "box", inset: 0, fill: { kind: "solid", color: "#000000", opacity: dim } },
   ] });
 }

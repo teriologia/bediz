@@ -2,12 +2,14 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { z } from "zod";
 import { registerFont } from "./text.js";
-import { AssetSchema, DesignSchema, WidgetSchema, type Asset, type Design, type Widget } from "@bediz/core";
+import { AssetSchema, DesignSchema, PaletteSchema, WidgetSchema, registerPalette, type Asset, type Design, type Palette, type Widget } from "@bediz/core";
 
 export const assets = new Map<string, Asset>();
 export const widgets = new Map<string, Widget>();
 export const designs = new Map<string, Design>();
 /** Kayıtlı fontlar: kimlik → kaynak dosya (+ UE'deki Font asset yolu). */
+/** Kayıtlı serbest paletler (ad → palet); ad aynı zamanda tema adıdır. */
+export const palettes = new Map<string, Palette>();
 export const fonts = new Map<string, { file: string; ueAsset?: string }>();
 
 const ProjectSchema = z.object({
@@ -16,6 +18,7 @@ const ProjectSchema = z.object({
   widgets: z.array(WidgetSchema).default([]),
   designs: z.array(DesignSchema).default([]),
   fonts: z.array(z.object({ id: z.string(), file: z.string(), ueAsset: z.string().optional() })).default([]),
+  palettes: z.array(PaletteSchema).default([]),
 });
 
 let projectFile: string | undefined;
@@ -33,6 +36,7 @@ export function openProject(file: string) {
   widgets.clear();
   designs.clear();
   fonts.clear();
+  palettes.clear();
   if (!existsSync(projectFile)) return;
   let parsed;
   try {
@@ -43,6 +47,7 @@ export function openProject(file: string) {
   for (const a of parsed.assets) assets.set(a.id, { ...a, path: resolve(dirname(projectFile), a.path) });
   for (const w of parsed.widgets) widgets.set(w.id, w);
   for (const d of parsed.designs) designs.set(d.id, d);
+  for (const p of parsed.palettes) { registerPalette(p); palettes.set(p.name, p); }
   for (const f of parsed.fonts) {
     const file = resolve(dirname(projectFile), f.file);
     fonts.set(f.id, { file, ueAsset: f.ueAsset });
@@ -62,6 +67,7 @@ function save() {
     }),
     widgets: [...widgets.values()],
     designs: [...designs.values()],
+    palettes: [...palettes.values()],
     fonts: [...fonts].map(([id, f]) => ({ id, file: relative(dir, f.file).replaceAll("\\", "/"), ueAsset: f.ueAsset })),
   };
   const tmp = `${projectFile}.tmp`;

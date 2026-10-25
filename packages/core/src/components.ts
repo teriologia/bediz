@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { CONTAINER_THEMES, THEME_NAMES, type ThemeName } from "./container.js";
+import { CONTAINER_THEMES, THEME_LOOK, ThemeSchema, lineOf, rampOf, type ThemeName } from "./container.js";
+export { THEME_LOOK };
 import { DesignSchema, shade, type Design } from "./design.js";
 import { MATERIAL_PRESETS, type MaterialPreset } from "./material.js";
 import { WidgetSchema, type Widget } from "./scene.js";
@@ -7,15 +8,7 @@ import { WidgetSchema, type Widget } from "./scene.js";
 const Id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "id sadece harf, rakam, _ ve - içerebilir (dosya adı olur)");
 const Hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "renk #RRGGBB olmalı");
 
-/** Tema başına bileşen renkleri: yüzey degradesi (üst/alt), yazı, çubuk dolgusu. Metal, container temasından gelir. */
-const LOOK: Record<ThemeName, { top: string; bottom: string; text: string; fill: string }> = {
-  "gold-stone": { top: "#2e3a39", bottom: "#141a1c", text: "#d8bf86", fill: "#4a9a5c" },
-  "silver-slate": { top: "#2b3b4a", bottom: "#10171e", text: "#cfd6df", fill: "#4a86c4" },
-  "bronze-wood": { top: "#4a3018", bottom: "#20130a", text: "#d8b48a", fill: "#c47a30" },
-  "ruby-blocks": { top: "#521620", bottom: "#260a0f", text: "#d8bf86", fill: "#a8283a" },
-  "emerald-bronze": { top: "#18443a", bottom: "#0a2019", text: "#d8b48a", fill: "#3a9a68" },
-};
-export { LOOK as THEME_LOOK };
+const LOOK = THEME_LOOK;
 export const metalOf = (theme: ThemeName, frame?: MaterialPreset): MaterialPreset => frame ?? CONTAINER_THEMES[theme].frame ?? "gold";
 
 export interface ComponentRecipe { theme: ThemeName; designs: Design[]; widget: Widget }
@@ -25,7 +18,7 @@ const outlineColor = "#120b05";
 
 // ---------------------------------------------------------------- BUTON
 export const ButtonInputSchema = z.object({
-  id: Id, theme: z.enum(THEME_NAMES).optional(), frame: z.enum(MATERIAL_PRESETS).optional(),
+  id: Id, theme: ThemeSchema.optional(), frame: z.enum(MATERIAL_PRESETS).optional(),
   label: z.string().max(60).optional(), width: z.number().int().min(60).max(1024).optional(), height: z.number().int().min(28).max(512).optional(),
   fontSize: z.number().int().min(8).max(96).optional(), rim: z.number().int().min(2).max(16).optional(), chamfer: z.boolean().optional(),
   wear: z.number().min(0).max(1).optional(), textColor: Hex.optional(),
@@ -62,7 +55,7 @@ export function buttonRecipe(input: ButtonInput): ComponentRecipe & { states: Re
         { id: "line2", kind: "ring", inset: lw + 2, thickness: 1, ...corner(lw + 2), opacity: lo * 0.35, fill: { kind: "solid", color: line } },
       ] });
     }
-    const rimFill = { kind: "material" as const, preset: dis ? ("silver" as const) : metal, seed: 7, wear: hov || sel ? 0 : wear };
+    const rimFill = { kind: "material" as const, preset: dis ? ("silver" as const) : metal, ...(dis ? {} : rampOf(theme)), seed: 7, wear: hov || sel ? 0 : wear };
     return DesignSchema.parse({ id: `${id}_${state}`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: [
       { id: "outline", kind: "ring", inset: 0, thickness: t + 3, ...corner(0), fill: { kind: "solid", color: outlineColor } },
       { id: "rim", kind: "ring", inset: 1, thickness: t, ...corner(1), fill: rimFill,
@@ -91,7 +84,7 @@ export function buttonWidget(id: string, states: Record<(typeof BUTTON_STATES)[n
 
 // ---------------------------------------------------------------- İLERLEME ÇUBUĞU
 export const BarInputSchema = z.object({
-  id: Id, theme: z.enum(THEME_NAMES).optional(), frame: z.enum(MATERIAL_PRESETS).optional(), fillColor: Hex.optional(),
+  id: Id, theme: ThemeSchema.optional(), frame: z.enum(MATERIAL_PRESETS).optional(), fillColor: Hex.optional(),
   width: z.number().int().min(60).max(2048).optional(), height: z.number().int().min(16).max(128).optional(), percent: z.number().min(0).max(1).optional(),
   style: z.enum(["metal", "ghost"]).optional(),
 }).strict();
@@ -109,7 +102,7 @@ export function barRecipe(input: BarInput): ComponentRecipe & { inset: number } 
   ] : undefined;
   const trough = DesignSchema.parse({ id: `${id}_trough`, kind: "frame9", width: TW, height: TH, slice: { left: mx, top: my, right: mx, bottom: my }, layers: troughLayers ?? [
     { id: "outline", kind: "ring", inset: 0, thickness: rim + 2, radius: r + 1, fill: { kind: "solid", color: outlineColor } },
-    { id: "rim", kind: "ring", inset: 1, thickness: rim, radius: r, fill: { kind: "material", preset: metal, seed: 9, wear: 0.25 }, effects: [{ kind: "bevel", depth: 2.5, size: 2 }] },
+    { id: "rim", kind: "ring", inset: 1, thickness: rim, radius: r, fill: { kind: "material", preset: metal, ...rampOf(theme), seed: 9, wear: 0.25 }, effects: [{ kind: "bevel", depth: 2.5, size: 2 }] },
     { id: "well", kind: "box", inset: 1 + rim, radius: Math.max(0, r - rim), fill: { kind: "linear", angle: 90, stops: [[0, "#06080a"], [1, "#161b1f"]] }, effects: [{ kind: "innerShadow", blur: 3, dy: 2, opacity: 0.9 }] },
   ] });
   const FH = h - 2 * inset, fm = Math.min(6, Math.floor(FH / 2) - 1), FW = 2 * 8 + 12;
@@ -126,7 +119,7 @@ export function barRecipe(input: BarInput): ComponentRecipe & { inset: number } 
 
 // ---------------------------------------------------------------- SLOT
 export const SlotInputSchema = z.object({
-  id: Id, theme: z.enum(THEME_NAMES).optional(), frame: z.enum(MATERIAL_PRESETS).optional(), size: z.number().int().min(32).max(256).optional(),
+  id: Id, theme: ThemeSchema.optional(), frame: z.enum(MATERIAL_PRESETS).optional(), size: z.number().int().min(32).max(256).optional(),
   style: z.enum(["metal", "ghost"]).optional(),
 }).strict();
 export type SlotInput = z.infer<typeof SlotInputSchema>;
@@ -143,7 +136,7 @@ export function slotRecipe(input: SlotInput): ComponentRecipe & { variants: { no
   ] });
   const make = (variant: "normal" | "selected") => o.style === "ghost" ? makeGhost(variant) : DesignSchema.parse({ id: `${id}_${variant}`, kind: "frame9", width: size, height: size, slice: { left: m, top: m, right: m, bottom: m }, layers: [
     { id: "outline", kind: "ring", inset: 0, thickness: t + 2, chamfer: 7, fill: { kind: "solid", color: outlineColor } },
-    { id: "rim", kind: "ring", inset: 1, thickness: t, chamfer: 6, fill: { kind: "material", preset: metal, seed: 11, wear: variant === "selected" ? 0 : 0.3 },
+    { id: "rim", kind: "ring", inset: 1, thickness: t, chamfer: 6, fill: { kind: "material", preset: metal, ...rampOf(theme), seed: 11, wear: variant === "selected" ? 0 : 0.3 },
       effects: [{ kind: "bevel", depth: 3, size: 3 }, ...(variant === "selected" ? [{ kind: "glow", blur: 6, color: "#ffd27a", opacity: 0.95 }] : [])] },
     { id: "well", kind: "box", inset: 1 + t, chamfer: 3, fill: { kind: "linear", angle: 90, stops: variant === "selected" ? [[0, "#7a5f22"], [1, "#33280f"]] : [[0, "#0d1114"], [1, "#1b2227"]] }, effects: [{ kind: "innerShadow", blur: 6, dy: 2, opacity: 0.9 }] },
   ] });
@@ -156,7 +149,7 @@ export function slotRecipe(input: SlotInput): ComponentRecipe & { variants: { no
 
 // ---------------------------------------------------------------- YETENEK ÇUBUĞU (QWER)
 export const SkillBarInputSchema = z.object({
-  id: Id, theme: z.enum(THEME_NAMES).optional(), frame: z.enum(MATERIAL_PRESETS).optional(), size: z.number().int().min(56).max(160).optional(),
+  id: Id, theme: ThemeSchema.optional(), frame: z.enum(MATERIAL_PRESETS).optional(), size: z.number().int().min(56).max(160).optional(),
   keys: z.array(z.string().min(1).max(3)).min(1).max(8).optional(), gap: z.number().int().min(0).max(40).optional(),
   active: z.array(z.number().int().min(0)).max(8).optional(), cooldowns: z.array(z.number().min(0).max(1)).max(8).optional(),
   icons: z.array(z.string()).max(8).optional(), iconColors: z.array(Hex).max(8).optional(),
@@ -176,7 +169,7 @@ export function skillBarRecipe(input: SkillBarInput): ComponentRecipe & { varian
   const make = (variant: "normal" | "active") => DesignSchema.parse({ id: `${id}_${variant}`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: [
     { id: "outline", kind: "ring", inset: 0, thickness: t + 3, chamfer: 10, fill: { kind: "solid", color: outlineColor },
       effects: [{ kind: "shadow", dx: 0, dy: 3, blur: 5, opacity: 0.7 }] },
-    { id: "rim", kind: "ring", inset: 1, thickness: t, chamfer: 9, fill: { kind: "material", preset: metal, seed: 5, wear: variant === "active" ? 0 : 0.25 },
+    { id: "rim", kind: "ring", inset: 1, thickness: t, chamfer: 9, fill: { kind: "material", preset: metal, ...rampOf(theme), seed: 5, wear: variant === "active" ? 0 : 0.25 },
       effects: [{ kind: "bevel", depth: 4, size: Math.max(2, t - 1) }, ...(variant === "active" ? [{ kind: "glow", blur: 8, color: "#ffd27a", opacity: 0.9 }] : [])] },
     { id: "seam", kind: "ring", inset: 1 + t, thickness: 2, chamfer: 5, fill: variant === "active" ? { kind: "solid", color: "#ffd27a", opacity: 0.85 } : { kind: "solid", color: "#0a0705" },
       effects: variant === "active" ? [{ kind: "glow", blur: 4, color: "#ffb040", opacity: 0.8 }] : [] },
@@ -188,7 +181,7 @@ export function skillBarRecipe(input: SkillBarInput): ComponentRecipe & { varian
   const km = 8, K = 2 * km + 16;
   const keycap = DesignSchema.parse({ id: `${id}_key`, kind: "frame9", width: K, height: K, slice: { left: km, top: km, right: km, bottom: km }, layers: [
     { id: "outline", kind: "ring", inset: 0, thickness: 5, chamfer: 6, fill: { kind: "solid", color: outlineColor }, effects: [{ kind: "shadow", dx: 0, dy: 2, blur: 3, opacity: 0.8 }] },
-    { id: "rim", kind: "ring", inset: 1, thickness: 3, chamfer: 5, fill: { kind: "material", preset: metal, seed: 9, wear: 0.2 }, effects: [{ kind: "bevel", depth: 2, size: 2 }] },
+    { id: "rim", kind: "ring", inset: 1, thickness: 3, chamfer: 5, fill: { kind: "material", preset: metal, ...rampOf(theme), seed: 9, wear: 0.2 }, effects: [{ kind: "bevel", depth: 2, size: 2 }] },
     { id: "face", kind: "box", inset: 4, chamfer: 2, fill: { kind: "linear", angle: 90, stops: [[0, look.top], [1, look.bottom]] }, effects: [{ kind: "innerShadow", blur: 3, dy: 1, opacity: 0.8 }] },
   ] });
   const cd = DesignSchema.parse({ id: `${id}_cd`, kind: "sprite", width: 16, height: 16, layers: [

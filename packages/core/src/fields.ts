@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { metalOf, THEME_LOOK, type ComponentRecipe } from "./components.js";
-import { GHOST_LINE, THEME_NAMES } from "./container.js";
+import { metalOf, type ComponentRecipe } from "./components.js";
+import { THEME_LOOK, ThemeSchema, lineOf, rampOf } from "./container.js";
 import { DesignSchema, type Design } from "./design.js";
 import { MATERIAL_PRESETS } from "./material.js";
 import { approxMeasure } from "./screens.js";
@@ -8,7 +8,7 @@ import { WidgetSchema, type Node } from "./scene.js";
 import type { TextMeasure } from "./layout.js";
 
 const Id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "id sadece harf, rakam, _ ve - içerebilir (dosya adı olur)");
-const common = { id: Id, theme: z.enum(THEME_NAMES).optional(), frame: z.enum(MATERIAL_PRESETS).optional(), style: z.enum(["metal", "ghost"]).optional() };
+const common = { id: Id, theme: ThemeSchema.optional(), frame: z.enum(MATERIAL_PRESETS).optional(), style: z.enum(["metal", "ghost"]).optional() };
 const outline = "#120b05";
 const full = { anchors: { minX: 0, minY: 0, maxX: 1, maxY: 1 }, offsets: { left: 0, top: 0, right: 0, bottom: 0 } };
 const at = (x: number, y: number, w: number, h: number) => ({ anchors: { minX: 0, minY: 0, maxX: 0, maxY: 0 }, offsets: { left: x, top: y, right: w, bottom: h } });
@@ -18,7 +18,7 @@ const text = (id: string, t: string, fontSize: number, color: string, slot: Node
 type FieldState = "normal" | "focused" | "disabled";
 /** Çökük alan çerçevesi (metin girişi, açılır liste gövdesi): 9-slice; focused = altın çizgi/parıltı, disabled = sönük. */
 function fieldFrame(id: string, state: FieldState, o: { theme: keyof typeof THEME_LOOK; frame?: z.infer<typeof common.frame>; style?: "metal" | "ghost"; size: number }): Design {
-  const look = THEME_LOOK[o.theme], metal = metalOf(o.theme, o.frame), line = GHOST_LINE[metal] ?? "#c9a45a", S = o.size, m = 10;
+  const look = THEME_LOOK[o.theme], metal = metalOf(o.theme, o.frame), line = lineOf(o.theme, o.frame), S = o.size, m = 10;
   const foc = state === "focused", dis = state === "disabled";
   const slice = { left: m, top: m, right: m, bottom: m };
   if (o.style === "ghost") {
@@ -30,7 +30,7 @@ function fieldFrame(id: string, state: FieldState, o: { theme: keyof typeof THEM
   }
   return DesignSchema.parse({ id, kind: "frame9", width: S, height: S, slice, layers: [
     { id: "outline", kind: "ring", inset: 0, thickness: 6, chamfer: 6, fill: { kind: "solid", color: outline } },
-    { id: "rim", kind: "ring", inset: 1, thickness: 3, chamfer: 5, fill: { kind: "material", preset: dis ? "silver" : metal, seed: 17, wear: foc ? 0 : 0.25 },
+    { id: "rim", kind: "ring", inset: 1, thickness: 3, chamfer: 5, fill: { kind: "material", preset: dis ? "silver" : metal, ...(dis ? {} : rampOf(o.theme)), seed: 17, wear: foc ? 0 : 0.25 },
       effects: [{ kind: "bevel", depth: 2.5, size: 2 }, ...(foc ? [{ kind: "glow", blur: 4, color: "#ffd27a", opacity: 0.7 }] : [])] },
     ...(dis ? [{ id: "rim_dim", kind: "ring", inset: 1, thickness: 3, chamfer: 5, fill: { kind: "solid", color: "#000000", opacity: 0.5 } }] : []),
     { id: "well", kind: "box", inset: 4, chamfer: 2, fill: { kind: "linear", angle: 90, stops: [[0, "#05070a"], [1, foc ? "#1d2429" : "#14191d"]] }, effects: [{ kind: "innerShadow", blur: 4, dy: 2, opacity: 0.9 }] },
@@ -69,7 +69,7 @@ export type DropdownInput = z.infer<typeof DropdownInputSchema>;
 /** Açılır liste: kapalı alan + ok, açık liste paneli ve seçili satır vurgusu. `open` listeyi widget'ta gösterir (oyunda aç/kapa görünürlükle yapılır). */
 export function dropdownRecipe(input: DropdownInput): ComponentRecipe & { field: Record<"normal" | "focused", string>; list: string; row: string; arrow: string } {
   const { id, theme = "gold-stone", ...o } = DropdownInputSchema.parse(input);
-  const look = THEME_LOOK[theme], metal = metalOf(theme, o.frame), line = GHOST_LINE[metal] ?? "#c9a45a", ghost = o.style === "ghost";
+  const look = THEME_LOOK[theme], metal = metalOf(theme, o.frame), line = lineOf(theme, o.frame), ghost = o.style === "ghost";
   const w = o.width ?? 280, h = o.height ?? 44, fs = o.fontSize ?? 18, options = o.options ?? ["Seçenek 1", "Seçenek 2", "Seçenek 3"], sel = Math.min(o.selected ?? 0, options.length - 1), open = o.open ?? true;
   const fo = { theme, frame: o.frame, style: o.style, size: 44 };
   const normal = fieldFrame(`${id}_normal`, "normal", fo), focused = fieldFrame(`${id}_focused`, "focused", fo);
@@ -103,7 +103,7 @@ export type ScrollbarInput = z.infer<typeof ScrollbarInputSchema>;
 /** Dikey kaydırma çubuğu: oluk + başlık (`<id>_thumb`, `<id>_thumb_hover`). start/size oranları başlığın yerini ve boyunu verir; kaydırma mantığı oyunun işi. */
 export function scrollbarRecipe(input: ScrollbarInput): ComponentRecipe & { thumb: { normal: string; hovered: string } } {
   const { id, theme = "gold-stone", ...o } = ScrollbarInputSchema.parse(input);
-  const look = THEME_LOOK[theme], metal = metalOf(theme, o.frame), line = GHOST_LINE[metal] ?? "#c9a45a", ghost = o.style === "ghost";
+  const look = THEME_LOOK[theme], metal = metalOf(theme, o.frame), line = lineOf(theme, o.frame), ghost = o.style === "ghost";
   const w = o.width ?? 18, h = o.height ?? 260, start = o.start ?? 0.15, size = Math.min(o.size ?? 0.35, 1 - start);
   const m = 7, S = 2 * m + 12;
   const trough = DesignSchema.parse({ id: `${id}_track`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: ghost ? [
@@ -118,7 +118,7 @@ export function scrollbarRecipe(input: ScrollbarInput): ComponentRecipe & { thum
     { id: "line", kind: "ring", inset: 0, thickness: 1, radius: 6, opacity: hov ? 1 : 0.7, fill: { kind: "solid", color: hov ? "#e0b860" : line } },
   ] : [
     { id: "outline", kind: "box", inset: 0, radius: 7, fill: { kind: "solid", color: outline } },
-    { id: "body", kind: "box", inset: 1, radius: 6, fill: { kind: "material", preset: metal, seed: 19, wear: hov ? 0 : 0.2 }, effects: [{ kind: "bevel", depth: 3, size: 3 }, ...(hov ? [{ kind: "glow", blur: 3, color: "#ffd27a", opacity: 0.6 }] : [])] },
+    { id: "body", kind: "box", inset: 1, radius: 6, fill: { kind: "material", preset: metal, ...rampOf(theme), seed: 19, wear: hov ? 0 : 0.2 }, effects: [{ kind: "bevel", depth: 3, size: 3 }, ...(hov ? [{ kind: "glow", blur: 3, color: "#ffd27a", opacity: 0.6 }] : [])] },
   ] });
   const thumb = thumbOf(false), hover = thumbOf(true), ty = Math.round(start * (h - 4)) + 2, th = Math.max(24, Math.round(size * (h - 4)));
   const widget = WidgetSchema.parse({ id, width: w, height: h, root: { id: "Root", type: "CanvasPanel", children: [

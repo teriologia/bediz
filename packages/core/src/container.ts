@@ -1,11 +1,56 @@
 import { z } from "zod";
-import { DesignSchema, type Design } from "./design.js";
+import { DesignSchema, shade, type Design } from "./design.js";
 import { MATERIAL_PRESETS, STONE_PATTERNS, type MaterialPreset, type StonePattern } from "./material.js";
 import { WidgetSchema, type Widget } from "./scene.js";
 
-export const THEME_NAMES = ["gold-stone", "silver-slate", "bronze-wood", "ruby-blocks", "emerald-bronze"] as const;
-export type ThemeName = (typeof THEME_NAMES)[number];
 const STYLES = ["blade", "scroll", "claw", "filigree"] as const;
+
+/** Yerleşik temalar; kayıtlı özel paletler (registerPalette) CONTAINER_THEMES / THEME_LOOK'a eklenir ve tema adı olarak kullanılır. */
+export const THEME_NAMES = ["gold-stone", "silver-slate", "bronze-wood", "ruby-blocks", "emerald-bronze"] as const;
+export type ThemeName = string;
+export const isTheme = (n: string) => n in CONTAINER_THEMES;
+export const ThemeSchema = z.string().refine(isTheme, { message: "bilinmeyen tema (yerleşik tema ya da register_palette ile kayıtlı ad)" });
+
+/** Tema başına bileşen renkleri: yüzey degradesi (üst/alt), yazı, çubuk dolgusu. Metal, container temasından gelir. */
+export const THEME_LOOK: Record<ThemeName, { top: string; bottom: string; text: string; fill: string }> = {
+  "gold-stone": { top: "#2e3a39", bottom: "#141a1c", text: "#d8bf86", fill: "#4a9a5c" },
+  "silver-slate": { top: "#2b3b4a", bottom: "#10171e", text: "#cfd6df", fill: "#4a86c4" },
+  "bronze-wood": { top: "#4a3018", bottom: "#20130a", text: "#d8b48a", fill: "#c47a30" },
+  "ruby-blocks": { top: "#521620", bottom: "#260a0f", text: "#d8bf86", fill: "#a8283a" },
+  "emerald-bronze": { top: "#18443a", bottom: "#0a2019", text: "#d8b48a", fill: "#3a9a68" },
+};
+
+// ---------- serbest palet
+const Hex6 = z.string().regex(/^#[0-9a-fA-F]{6}$/, "renk #RRGGBB olmalı");
+export const PaletteSchema = z.object({
+  name: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,39}$/, "ad küçük harf/rakam/_/- (en çok 40)").refine((n) => !(THEME_NAMES as readonly string[]).includes(n), "yerleşik tema adı kullanılamaz"),
+  surface: Hex6, // bileşen yüzeyinin AÇIK tonu (düğme/alan gövdesi); alt tonu otomatik koyulaşır
+  accent: Hex6, // çubuk dolgusu, mücevher, vurgu
+  metal: Hex6, // çerçeve metalinin orta tonu (rampa otomatik: koyu → açık)
+  text: Hex6,
+  ground: Hex6.optional(), // panel zemin döşemesinin rengi (varsayılan: surface)
+  gemShape: z.enum(["diamond", "round", "hex"]).optional(),
+  cornerStyle: z.enum(STYLES).optional(),
+}).strict();
+export type Palette = z.infer<typeof PaletteSchema>;
+
+const ramp5 = (h: string) => [shade(h, -0.72), shade(h, -0.42), h, shade(h, 0.3), shade(h, 0.62)];
+/** Özel tema adı → malzeme renk rampaları ve çizgi rengi (ghost stil); yerleşik temalarda yok. */
+const customRamps = new Map<string, { metal: string[]; ground: string[]; band: string[]; line: string }>();
+export const rampOf = (theme: ThemeName): { colors?: string[] } => { const r = customRamps.get(theme); return r ? { colors: r.metal } : {}; };
+export const rampsOf = (theme: ThemeName) => customRamps.get(theme);
+const GHOST_LINES: Record<string, string> = { gold: "#c9a45a", silver: "#b9c2cc", bronze: "#b87b45", wood: "#a9855a", stone: "#a09a8e", slate: "#8e9aa6" };
+/** Ghost stilde çizgi rengi: özel palette metalin açık tonu, yerleşik temada metal ön ayarının rengi. */
+export const lineOf = (theme: ThemeName, frame?: MaterialPreset): string => customRamps.get(theme)?.line ?? GHOST_LINES[frame ?? CONTAINER_THEMES[theme].frame ?? "gold"] ?? "#c9a45a";
+
+/** Serbest paleti tema olarak kaydeder (aynı ad yeniden çağrılırsa üzerine yazar). Dönüş: tema adı. */
+export function registerPalette(input: Palette): string {
+  const p = PaletteSchema.parse(input), ground = p.ground ?? p.surface;
+  THEME_LOOK[p.name] = { top: p.surface, bottom: shade(p.surface, -0.55), text: p.text, fill: p.accent };
+  CONTAINER_THEMES[p.name] = { background: "stone", pattern: "flagstone", frame: "silver", band: "slate", gemColor: p.accent, gemShape: p.gemShape ?? "diamond", cornerStyle: p.cornerStyle ?? "filigree" };
+  customRamps.set(p.name, { metal: ramp5(p.metal), ground: ramp5(ground), band: ramp5(shade(p.surface, -0.2)), line: shade(p.metal, 0.35) });
+  return p.name;
+}
 
 /** Tarifin çözülmüş (varsayılanlar + tema + kullanıcı) parametreleri. */
 export interface ContainerParams {
@@ -25,7 +70,6 @@ const BASE: ContainerParams = {
 };
 // ghost: ince çift çizgi, süs/mücevher/çatlak yok; çizgi rengi çerçeve metalinden gelir.
 const GHOST: Partial<ContainerParams> = { thickness: 16, gem: false, ornaments: false, cracks: false, dim: 0.45 };
-export const GHOST_LINE: Record<string, string> = { gold: "#c9a45a", silver: "#b9c2cc", bronze: "#b87b45", wood: "#a9855a", stone: "#a09a8e", slate: "#8e9aa6" };
 
 /** Hazır görünümler: sadece farkları yazılır, kullanıcı parametreleri üstüne biner. */
 export const CONTAINER_THEMES: Record<ThemeName, Partial<ContainerParams>> = {
@@ -39,7 +83,7 @@ export const CONTAINER_THEMES: Record<ThemeName, Partial<ContainerParams>> = {
 const Hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "renk #RRGGBB olmalı");
 export const ContainerInputSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "id sadece harf, rakam, _ ve - içerebilir (dosya adı olur)"),
-  theme: z.enum(THEME_NAMES).optional(),
+  theme: ThemeSchema.optional(),
   width: z.number().int().min(120).max(2048).optional(), height: z.number().int().min(120).max(2048).optional(),
   background: z.enum(MATERIAL_PRESETS).optional(), pattern: z.enum(STONE_PATTERNS).optional(),
   frame: z.enum(MATERIAL_PRESETS).optional(), band: z.enum(MATERIAL_PRESETS).optional(),
@@ -66,6 +110,7 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
   const { id, theme = "gold-stone", ...explicit } = ContainerInputSchema.parse(input);
   const defined = Object.fromEntries(Object.entries(explicit).filter(([, v]) => v !== undefined));
   const p: ContainerParams = { ...BASE, ...CONTAINER_THEMES[theme], ...(defined.style === "ghost" ? GHOST : {}), ...defined };
+  const line = lineOf(theme, p.frame), ramps = rampsOf(theme);
   const t = p.thickness, r = p.radius, c0 = Math.max(8, Math.round(r * 1.6));
 
   // Süs pah kırık köşenin dışına taşmasın diye içeri alınır; slice marjı süsü kapsar (yoksa gerilir).
@@ -75,7 +120,7 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
   const o = 1, g = Math.max(3, Math.round(t * 0.24)), rim = Math.max(2, Math.round(t * 0.1)), sl = t - g - rim;
   // Köşe biçimi: pah ya da yuvarlak; iç halkalarda eşit kalınlık için küçülür (inset o = dış altın başlangıcı).
   const corner = (inset: number) => (p.chamfer ? { chamfer: Math.max(0, Math.round(c0 - (inset - o) * 0.586)) } : { radius: Math.max(0, r - (inset - o)) });
-  const metal = (seed: number, wear = p.wear * 0.5) => ({ kind: "material" as const, preset: p.frame, seed, wear });
+  const metal = (seed: number, wear = p.wear * 0.5) => ({ kind: "material" as const, preset: p.frame, ...(ramps ? { colors: ramps.metal } : {}), seed, wear });
 
   // Çatlaklar sadece bantlarda: her köşede üst/alt bant boyunca yatay, yan bant boyunca dikey birer çatlak.
   const cw = m - 12, b0 = o + g + 3, bh = Math.max(4, sl - 6), cracks: Record<string, unknown>[] = [];
@@ -86,16 +131,15 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
   });
 
   const bg = DesignSchema.parse({ id: `${id}_bg`, kind: "tile", width: 256, height: 256, layers: [
-    { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: p.background, pattern: p.pattern, seed: 5, wear: p.wear * 0.8 } },
+    { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: p.background, pattern: p.pattern, ...(ramps ? { colors: ramps.ground } : {}), seed: 5, wear: p.wear * 0.8 } },
     ...(p.dim > 0 ? [{ id: "dim", kind: "box", inset: 0, fill: { kind: "solid", color: "#000000", opacity: p.dim } }] : []),
   ] });
   // Derinlik katmanı: ortadan kenara sönen sıcak ışık (screen) + kenar vinyeti; zeminle çerçeve arasında gerilir.
-  const lineHex = GHOST_LINE[p.frame] ?? "#c9a45a";
+  const lineHex = line;
   const shade = p.shade ? DesignSchema.parse({ id: `${id}_shade`, kind: "sprite", width: 256, height: 256, layers: [
     { id: "light", kind: "box", inset: 0, blend: "screen", fill: { kind: "radial", cx: 0.5, cy: 0.38, r: 0.6, stops: [[0, `${lineHex}40`], [1, `${lineHex}00`]] } },
     { id: "vignette", kind: "box", inset: 0, fill: { kind: "radial", cx: 0.5, cy: 0.5, r: 0.8, stops: [[0.35, "#00000000"], [1, "#000000b8"]] } },
   ] }) : undefined;
-  const line = GHOST_LINE[p.frame] ?? "#c9a45a";
   const ghostLayers = [
     { id: "shade", kind: "ring", inset: 0, thickness: 4, ...corner(0), fill: { kind: "solid", color: "#000000", opacity: 0.55 }, effects: [{ kind: "shadow", dx: 0, dy: 2, blur: 5, opacity: 0.6 }] },
     { id: "line", kind: "ring", inset: 1, thickness: 2, ...corner(1), fill: { kind: "solid", color: line, opacity: 0.85 } },
@@ -106,7 +150,7 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
     { id: "gold_outer", kind: "ring", inset: o, thickness: g, ...corner(o), fill: metal(3),
       effects: [{ kind: "bevel", depth: 4, size: Math.max(2, Math.round(g * 0.6)) }, { kind: "shadow", dx: 0, dy: 2, blur: 4, opacity: 0.7 }] },
     { id: "slate", kind: "ring", inset: o + g, thickness: sl, ...corner(o + g),
-      fill: { kind: "material", preset: p.band, pattern: "fine", scale: 2.2, seed: 6, wear: p.wear * 0.25 },
+      fill: { kind: "material", preset: p.band, pattern: "fine", ...(ramps ? { colors: ramps.band } : {}), scale: 2.2, seed: 6, wear: p.wear * 0.25 },
       effects: [{ kind: "innerShadow", blur: 6, dy: 2, opacity: 0.9 }] },
     { id: "gold_rim", kind: "ring", inset: o + g + sl, thickness: rim, ...corner(o + g + sl), fill: metal(5),
       effects: [{ kind: "bevel", depth: 3, size: Math.max(2, rim - 1) }, { kind: "shadow", dx: 0, dy: 2, blur: 3, opacity: 0.75 }] },
@@ -120,7 +164,7 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
 
   const G = Math.round(p.gemSize * 2.2);
   const gem = p.gem ? DesignSchema.parse({ id: `${id}_gem`, kind: "sprite", width: G, height: G, layers: [
-    { id: "gem", kind: "gem", cx: G / 2, cy: G / 2 + 2, size: p.gemSize, color: p.gemColor, shape: p.gemShape },
+    { id: "gem", kind: "gem", cx: G / 2, cy: G / 2 + 2, size: p.gemSize, color: p.gemColor, shape: p.gemShape, ...(ramps ? { settingColors: ramps.metal } : {}) },
   ] }) : undefined;
 
   // Widget: gem'in üst kenardan taşan yarısı için tepeye pay bırakılır.

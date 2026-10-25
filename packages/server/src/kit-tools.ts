@@ -1,16 +1,34 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
-  DropdownInputSchema, InputInputSchema, ScrollbarInputSchema, SliderInputSchema, TabsInputSchema, ToggleInputSchema, TooltipInputSchema, UiKitInputSchema,
+  DropdownInputSchema, InputInputSchema, PaletteSchema, registerPalette, ScrollbarInputSchema, SliderInputSchema, TabsInputSchema, ToggleInputSchema, TooltipInputSchema, UiKitInputSchema,
   dropdownRecipe, inputRecipe, scrollbarRecipe, sliderRecipe, tabsRecipe, toggleRecipe, tooltipRecipe, uiKitRecipe, type ComponentRecipe,
 } from "@bediz/core";
 import { brushes, content, find, install, sheet, variant } from "./component-tools.js";
 import { renderWidget } from "./render-scene.js";
-import { assets } from "./state.js";
+import { assets, notify, palettes } from "./state.js";
 import { measureText } from "./text.js";
 
 const BG = "#2a2a32";
 
 export function registerKitTools(server: McpServer) {
+  server.tool(
+    "register_palette",
+    "Serbest renk paleti kaydeder; `name` artık bir tema adıdır (create_ui_kit, create_button, create_container, create_*_screen vb. `theme: <name>` ile kullanır). " +
+    "surface: yüzeyin AÇIK tonu (alt ton otomatik), accent: çubuk dolgusu/mücevher/vurgu, metal: çerçeve metalinin orta tonu (koyu→açık rampa otomatik), text, ground?: panel zemin rengi. " +
+    "Dönüş: bu paletle üretilmiş küçük bir kit önizlemesi. Aynı ad yeniden kaydedilirse üzerine yazılır (önceden üretilen asset'ler değişmez, yeniden üret).",
+    PaletteSchema.shape,
+    async (input) => {
+      const p = PaletteSchema.parse(input);
+      registerPalette(p);
+      palettes.set(p.name, p);
+      notify();
+      const kit = uiKitRecipe({ id: `pal_${p.name}`, theme: p.name });
+      const pngs: Buffer[] = [];
+      for (const key of ["button", "bar", "toggle", "slider"]) { const r = kit.components[key]; await install(r); pngs.push(await renderWidget(r.widget, assets, BG)); }
+      return content({ theme: p.name, palette: p }, await sheet(pngs, "column", 16));
+    },
+  );
+
   server.tool(
     "create_toggle",
     "Aç/kapa anahtarı: `<id>_off` ve `<id>_on` sabit boyutlu tasarımları (style: metal | ghost). Oyun brush'ı değiştirerek durumu gösterir.",
