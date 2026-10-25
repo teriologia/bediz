@@ -9,6 +9,7 @@ import { renderNineSlice } from "./render.js";
 import { startHttp } from "./http.js";
 import { registerSceneTools } from "./scene-tools.js";
 import { registerDesignTools } from "./design-tools.js";
+import { registerUnrealTools } from "./unreal-tools.js";
 
 // Proje dosyası: BEDIZ_PROJECT, yoksa çalışma klasöründeki bediz.project.json.
 // shortcut: her değişiklikte tüm dosya yeniden yazılır; büyük projelerde artımlı yazıma geç.
@@ -80,5 +81,6 @@ server.tool(
 
 registerSceneTools(server);
 registerDesignTools(server);
+registerUnrealTools(server);
 
 await server.connect(new StdioServerTransport());
