@@ -4,11 +4,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { SliceSchema, detectSlice, toUnrealBrush, validateSlice } from "@bediz/core";
-import { assets, getAsset, notify } from "./state.js";
+import { assets, getAsset, notify, openProject } from "./state.js";
 import { renderNineSlice } from "./render.js";
 import { startHttp } from "./http.js";
 
-// shortcut: bellek içi durum, kalıcı proje dosyası sonraki adım.
+// Proje dosyası: BEDIZ_PROJECT, yoksa çalışma klasöründeki bediz.project.json.
+// shortcut: her değişiklikte tüm dosya yeniden yazılır; büyük projelerde artımlı yazıma geç.
+const projectPath = resolve(process.env.BEDIZ_PROJECT ?? "bediz.project.json");
+openProject(projectPath);
+console.error(`bediz project: ${projectPath} (${assets.size} asset)`);
 startHttp(Number(process.env.BEDIZ_PORT ?? 5757));
 
 const server = new McpServer({ name: "bediz", version: "0.0.1" });
