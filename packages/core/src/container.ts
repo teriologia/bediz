@@ -24,7 +24,7 @@ const BASE: ContainerParams = {
 };
 // ghost: ince çift çizgi, süs/mücevher/çatlak yok; çizgi rengi çerçeve metalinden gelir.
 const GHOST: Partial<ContainerParams> = { thickness: 16, gem: false, ornaments: false, cracks: false };
-const GHOST_LINE: Record<string, string> = { gold: "#c9a45a", silver: "#b9c2cc", bronze: "#b87b45", wood: "#a9855a", stone: "#a09a8e", slate: "#8e9aa6" };
+export const GHOST_LINE: Record<string, string> = { gold: "#c9a45a", silver: "#b9c2cc", bronze: "#b87b45", wood: "#a9855a", stone: "#a09a8e", slate: "#8e9aa6" };
 
 /** Hazır görünümler: sadece farkları yazılır, kullanıcı parametreleri üstüne biner. */
 export const CONTAINER_THEMES: Record<ThemeName, Partial<ContainerParams>> = {

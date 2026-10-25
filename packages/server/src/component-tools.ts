@@ -18,11 +18,11 @@ export async function install(r: ComponentRecipe) {
   return exported;
 }
 
-const find = (n: Node, type: string): Node | undefined => (n.type === type ? n : n.children.map((c) => find(c, type)).find(Boolean));
-const variant = (w: Widget, change: (root: Node) => void): Widget => { const c = structuredClone(w); change(c.root); return c; };
+export const find = (n: Node, type: string): Node | undefined => (n.type === type ? n : n.children.map((c) => find(c, type)).find(Boolean));
+export const variant = (w: Widget, change: (root: Node) => void): Widget => { const c = structuredClone(w); change(c.root); return c; };
 
 /** Önizlemeleri yan yana (row) ya da alt alta (column) dizer. */
-async function sheet(pngs: Buffer[], direction: "row" | "column", gap = 14, background = "#1c1f23") {
+export async function sheet(pngs: Buffer[], direction: "row" | "column", gap = 14, background = "#1c1f23") {
   const metas = await Promise.all(pngs.map((p) => sharp(p).metadata()));
   const W = direction === "row" ? metas.reduce((s, m) => s + m.width! + gap, gap) : Math.max(...metas.map((m) => m.width!)) + 2 * gap;
   const H = direction === "row" ? Math.max(...metas.map((m) => m.height!)) + 2 * gap : metas.reduce((s, m) => s + m.height! + gap, gap);
@@ -35,10 +35,10 @@ async function sheet(pngs: Buffer[], direction: "row" | "column", gap = 14, back
   return sharp({ create: { width: W, height: H, channels: 4, background } }).composite(parts).png().toBuffer();
 }
 
-const content = (summary: unknown, png: Buffer) => ({
+export const content = (summary: unknown, png: Buffer) => ({
   content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }, { type: "image" as const, data: png.toString("base64"), mimeType: "image/png" }],
 });
-const brushes = (exported: Awaited<ReturnType<typeof install>>) =>
+export const brushes = (exported: Awaited<ReturnType<typeof install>>) =>
   exported.map((a) => ({ id: a.id, size: `${a.width}x${a.height}`, slice: a.slice, unrealBrush: toUnrealBrush(a) }));
 
 export function registerComponentTools(server: McpServer) {

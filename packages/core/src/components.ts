@@ -16,7 +16,7 @@ const LOOK: Record<ThemeName, { top: string; bottom: string; text: string; fill:
   "emerald-bronze": { top: "#18443a", bottom: "#0a2019", text: "#d8b48a", fill: "#3a9a68" },
 };
 export { LOOK as THEME_LOOK };
-const metalOf = (theme: ThemeName, frame?: MaterialPreset): MaterialPreset => frame ?? CONTAINER_THEMES[theme].frame ?? "gold";
+export const metalOf = (theme: ThemeName, frame?: MaterialPreset): MaterialPreset => frame ?? CONTAINER_THEMES[theme].frame ?? "gold";
 
 export interface ComponentRecipe { theme: ThemeName; designs: Design[]; widget: Widget }
 
