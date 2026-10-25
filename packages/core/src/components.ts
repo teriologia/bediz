@@ -29,6 +29,7 @@ export const ButtonInputSchema = z.object({
   label: z.string().max(60).optional(), width: z.number().int().min(60).max(1024).optional(), height: z.number().int().min(28).max(512).optional(),
   fontSize: z.number().int().min(8).max(96).optional(), rim: z.number().int().min(2).max(16).optional(), chamfer: z.boolean().optional(),
   wear: z.number().min(0).max(1).optional(), textColor: Hex.optional(),
+  faceOpacity: z.number().min(0).max(1).optional(), // 1: opak yüzey; düşük: şeffaf/cam buton (zemin görünür)
 }).strict();
 export type ButtonInput = z.infer<typeof ButtonInputSchema>;
 export const BUTTON_STATES = ["normal", "hovered", "pressed", "disabled"] as const;
@@ -55,7 +56,7 @@ export function buttonRecipe(input: ButtonInput): ComponentRecipe & { states: Re
       { id: "rim", kind: "ring", inset: 1, thickness: t, ...corner(1), fill: rimFill,
         effects: [{ kind: "bevel", depth: 3, size: Math.max(2, Math.min(12, t - 1)) }, ...(hov ? [{ kind: "glow", blur: 4, color: "#ffd27a", opacity: 0.5 }] : [])] },
       ...(prs || dis ? [{ id: "rim_dim", kind: "ring", inset: 1, thickness: t, ...corner(1), fill: { kind: "solid", color: "#000000", opacity: dis ? 0.5 : 0.3 } }] : []),
-      { id: "face", kind: "box", inset: 1 + t, ...corner(1 + t), fill: { kind: "linear", angle: 90, stops: [[0, top], [1, bottom]] },
+      { id: "face", kind: "box", inset: 1 + t, ...corner(1 + t), opacity: o.faceOpacity, fill: { kind: "linear", angle: 90, stops: [[0, top], [1, bottom]] },
         effects: [{ kind: "innerShadow", blur: prs ? 5 : 3, dy: prs ? 3 : 1, opacity: prs ? 0.9 : 0.6 }] },
       // parlama sadece kenar bölgesinde (gerilmeyen kısım): yükseklik sabit kalır
       { id: "gloss", kind: "box", inset: 1 + t, h: m - (1 + t), ...corner(1 + t), fill: { kind: "solid", color: "#ffffff", opacity: dis ? 0.03 : prs ? 0.04 : hov ? 0.18 : 0.1 } },
@@ -123,4 +124,69 @@ export function slotRecipe(input: SlotInput): ComponentRecipe & { variants: { no
     { id: "Frame", type: "Image", brush: { asset: normal.id }, slot: full, children: [] },
   ] } });
   return { theme, designs: [normal, selected], widget, variants: { normal: normal.id, selected: selected.id } };
+}
+
+// ---------------------------------------------------------------- YETENEK ÇUBUĞU (QWER)
+export const SkillBarInputSchema = z.object({
+  id: Id, theme: z.enum(THEME_NAMES).optional(), frame: z.enum(MATERIAL_PRESETS).optional(), size: z.number().int().min(56).max(160).optional(),
+  keys: z.array(z.string().min(1).max(3)).min(1).max(8).optional(), gap: z.number().int().min(0).max(40).optional(),
+  active: z.array(z.number().int().min(0)).max(8).optional(), cooldowns: z.array(z.number().min(0).max(1)).max(8).optional(),
+  icons: z.array(z.string()).max(8).optional(), iconColors: z.array(Hex).max(8).optional(),
+}).strict();
+export type SkillBarInput = z.infer<typeof SkillBarInputSchema>;
+
+const RUNE_COLORS = ["#d9602a", "#3aa0d8", "#5fbf5a", "#a45ad8"];
+
+/**
+ * Yetenek çubuğu (Q W E R…): her yetenek için metal çerçeveli çökük yuva, simge (varsayılan: renkli rün-mücevher yer tutucu;
+ * `icons` ile kendi simge asset'lerini ver), altta çıkıntılı tuş kapağı, üstten aşağı dolan soğuma karartması, `active` slotlarda parıltı.
+ */
+export function skillBarRecipe(input: SkillBarInput): ComponentRecipe & { variants: { normal: string; active: string } } {
+  const { id, theme = "gold-stone", ...o } = SkillBarInputSchema.parse(input);
+  const look = LOOK[theme], metal = metalOf(theme, o.frame), S = o.size ?? 88, gap = o.gap ?? 14, t = Math.max(5, Math.round(S / 14));
+  const keys = o.keys ?? ["Q", "W", "E", "R"], active = new Set(o.active ?? []), cds = o.cooldowns ?? [], m = Math.min(16, Math.floor(S / 3));
+  const make = (variant: "normal" | "active") => DesignSchema.parse({ id: `${id}_${variant}`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: [
+    { id: "outline", kind: "ring", inset: 0, thickness: t + 3, chamfer: 10, fill: { kind: "solid", color: outlineColor },
+      effects: [{ kind: "shadow", dx: 0, dy: 3, blur: 5, opacity: 0.7 }] },
+    { id: "rim", kind: "ring", inset: 1, thickness: t, chamfer: 9, fill: { kind: "material", preset: metal, seed: 5, wear: variant === "active" ? 0 : 0.25 },
+      effects: [{ kind: "bevel", depth: 4, size: Math.max(2, t - 1) }, ...(variant === "active" ? [{ kind: "glow", blur: 8, color: "#ffd27a", opacity: 0.9 }] : [])] },
+    { id: "seam", kind: "ring", inset: 1 + t, thickness: 2, chamfer: 5, fill: variant === "active" ? { kind: "solid", color: "#ffd27a", opacity: 0.85 } : { kind: "solid", color: "#0a0705" },
+      effects: variant === "active" ? [{ kind: "glow", blur: 4, color: "#ffb040", opacity: 0.8 }] : [] },
+    { id: "well", kind: "box", inset: 3 + t, chamfer: 4, fill: { kind: "radial", stops: variant === "active" ? [[0, "#3a2f18"], [1, "#0d0a05"]] : [[0, "#1f2a30"], [1, "#07090b"]] },
+      effects: [{ kind: "innerShadow", blur: 10, dy: 3, opacity: 0.95 }] },
+  ] });
+  const normal = make("normal"), activeD = make("active");
+
+  const km = 8, K = 2 * km + 16;
+  const keycap = DesignSchema.parse({ id: `${id}_key`, kind: "frame9", width: K, height: K, slice: { left: km, top: km, right: km, bottom: km }, layers: [
+    { id: "outline", kind: "ring", inset: 0, thickness: 5, chamfer: 6, fill: { kind: "solid", color: outlineColor }, effects: [{ kind: "shadow", dx: 0, dy: 2, blur: 3, opacity: 0.8 }] },
+    { id: "rim", kind: "ring", inset: 1, thickness: 3, chamfer: 5, fill: { kind: "material", preset: metal, seed: 9, wear: 0.2 }, effects: [{ kind: "bevel", depth: 2, size: 2 }] },
+    { id: "face", kind: "box", inset: 4, chamfer: 2, fill: { kind: "linear", angle: 90, stops: [[0, look.top], [1, look.bottom]] }, effects: [{ kind: "innerShadow", blur: 3, dy: 1, opacity: 0.8 }] },
+  ] });
+  const cd = DesignSchema.parse({ id: `${id}_cd`, kind: "sprite", width: 16, height: 16, layers: [
+    { id: "dim", kind: "box", inset: 0, fill: { kind: "solid", color: "#05070a", opacity: 0.72 } },
+  ] });
+  const IC = S - 2 * (t + 5);
+  const runes = keys.map((_, i) => o.icons?.[i] ? undefined : DesignSchema.parse({ id: `${id}_rune${i + 1}`, kind: "sprite", width: IC, height: IC, layers: [
+    { id: "gem", kind: "gem", cx: IC / 2, cy: IC / 2, size: IC * 0.5, color: o.iconColors?.[i] ?? RUNE_COLORS[i % RUNE_COLORS.length], shape: "diamond", setting: "none" },
+  ] })).filter((d): d is Design => !!d);
+
+  const gemKeyH = 28, extra = Math.round(gemKeyH / 2);
+  const cell = (i: number) => {
+    const cdPx = Math.round((S - 2 * (t + 5)) * (cds[i] ?? 0));
+    return { id: `Skill${i + 1}`, type: "SizeBox" as const, width: S, height: S + extra, slot: { padding: { left: gap / 2, top: 0, right: gap / 2, bottom: 0 } }, children: [
+      { id: `Cell${i + 1}`, type: "Overlay" as const, children: [
+        { id: `Frame${i + 1}`, type: "Image" as const, brush: { asset: active.has(i) ? activeD.id : normal.id }, slot: { padding: { left: 0, top: 0, right: 0, bottom: extra } }, children: [] },
+        { id: `Icon${i + 1}`, type: "Image" as const, brush: { asset: o.icons?.[i] ?? `${id}_rune${i + 1}` }, size: { x: IC, y: IC }, slot: { hAlign: "Center" as const, vAlign: "Top" as const, padding: { left: 0, top: t + 5, right: 0, bottom: 0 } }, children: [] },
+        ...(cdPx > 0 ? [{ id: `Cooldown${i + 1}`, type: "Image" as const, brush: { asset: cd.id }, size: { x: IC, y: cdPx }, slot: { hAlign: "Center" as const, vAlign: "Top" as const, padding: { left: 0, top: t + 5, right: 0, bottom: 0 } }, children: [] }] : []),
+        { id: `KeyCap${i + 1}`, type: "Image" as const, brush: { asset: keycap.id }, size: { x: 38, y: gemKeyH }, slot: { hAlign: "Center" as const, vAlign: "Bottom" as const }, children: [] },
+        { id: `Key${i + 1}`, type: "TextBlock" as const, text: keys[i], fontSize: 17, color: look.text, slot: { hAlign: "Center" as const, vAlign: "Bottom" as const, padding: { left: 0, top: 0, right: 0, bottom: 4 } }, children: [] },
+      ] },
+    ] };
+  };
+  const width = keys.length * (S + gap), height = S + extra;
+  const widget = WidgetSchema.parse({ id, width, height, root: { id: "Root", type: "CanvasPanel", children: [
+    { id: "Bar", type: "HorizontalBox", slot: full, children: keys.map((_, i) => cell(i)) },
+  ] } });
+  return { theme, designs: [normal, activeD, keycap, cd, ...runes], widget, variants: { normal: normal.id, active: activeD.id } };
 }

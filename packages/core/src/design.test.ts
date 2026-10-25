@@ -55,4 +55,13 @@ assert.match(gl({ h: 10 }), /M4,4 H60 V14 H4 Z/);
 assert.match(gl({ w: 20 }), /M4,4 H24 V60 H4 Z/);
 assert.equal(shade("#808080", 1), "#ffffff");
 assert.equal(shade("#808080", -1), "#000000");
+// saydam durak, radial merkez, grain ve blend şeması
+const fx = DesignSchema.parse({ id: "fx", kind: "sprite", width: 64, height: 64, layers: [
+  { id: "v", kind: "box", inset: 0, fill: { kind: "radial", cx: 0.5, cy: 0.5, r: 0.7, stops: [[0, "#00000000"], [1, "#000000cc"]] }, effects: [{ kind: "grain", amount: 0.4 }], blend: "multiply" }] });
+const fxSvg = compileDesign(fx);
+assert.match(fxSvg, /stop-opacity="0"/);
+assert.match(fxSvg, /stop-opacity="0\.8"/);
+assert.match(fxSvg, /cx="0\.5" cy="0\.5" r="0\.7"/);
+assert.match(fxSvg, /feTurbulence/);
+assert.throws(() => DesignSchema.parse({ ...fx, layers: [{ ...fx.layers[0], blend: "bogus" }] }));
 console.log("design ok");

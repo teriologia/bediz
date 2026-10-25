@@ -42,8 +42,8 @@ async function materialLayer(d: Design, l: MaterialShape): Promise<sharp.Overlay
 export async function renderDesignPng(d: Design, background?: string): Promise<Buffer> {
   const parts: sharp.OverlayOptions[] = [];
   for (const l of expandLayers(d)) {
-    if (isMaterial(l)) parts.push(...(await materialLayer(d, l)));
-    else parts.push({ input: await sharp(svgOf(d, l)).png().toBuffer() });
+    const layerParts = isMaterial(l) ? await materialLayer(d, l) : [{ input: await sharp(svgOf(d, l)).png().toBuffer() }];
+    parts.push(...layerParts.map((p) => (l.blend ? { ...p, blend: l.blend } : p)));
   }
   let img = sharp({ create: { width: d.width, height: d.height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite(parts);
   // SVG `texture` dolgusu (librsvg stitchTiles çalışmıyor) dikişsizliği sonradan alır; `material` zaten periyodik.

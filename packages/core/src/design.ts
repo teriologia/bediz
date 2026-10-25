@@ -3,8 +3,11 @@ import { SliceSchema, validateSlice } from "./slice.js";
 import { MATERIAL_PRESETS, STONE_PATTERNS, hash2 } from "./material.js";
 
 const Color = z.string().regex(/^#[0-9a-fA-F]{6}$/, "renk #RRGGBB olmalı");
-const Stops = z.array(z.tuple([z.number().min(0).max(1), Color])).min(2);
+// Durak rengi #RRGGBB ya da #RRGGBBAA (son iki hane saydamlık): vinyet gibi saydama dönen geçişler için.
+const StopColor = z.string().regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/, "renk #RRGGBB veya #RRGGBBAA olmalı");
+const Stops = z.array(z.tuple([z.number().min(0).max(1), StopColor])).min(2);
 
+export const BLEND_MODES = ["multiply", "screen", "overlay", "soft-light", "lighten", "darken"] as const;
 export const TEXTURE_PRESETS = ["stone", "gold", "slate", "wood"] as const;
 export type TexturePreset = (typeof TEXTURE_PRESETS)[number];
 
@@ -32,7 +35,7 @@ const MaterialFill = z.object({
 export const FillSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("solid"), color: Color, opacity: z.number().min(0).max(1).optional() }).strict(),
   z.object({ kind: z.literal("linear"), angle: z.number().optional(), stops: Stops }).strict(), // 0=soldan sağa, 90=yukarıdan aşağı
-  z.object({ kind: z.literal("radial"), stops: Stops }).strict(),
+  z.object({ kind: z.literal("radial"), stops: Stops, cx: z.number().optional(), cy: z.number().optional(), r: z.number().positive().optional() }).strict(), // cx/cy/r: 0..1 tuval oranı (varsayılan .4/.35/.75; vinyet için .5/.5/.75)
   TextureFill,
   MaterialFill,
 ]);
@@ -47,6 +50,8 @@ export const EffectSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("innerShadow"), dx: z.number().optional(), dy: z.number().optional(), blur: z.number().min(0).max(30).optional(),
     color: Color.optional(), opacity: z.number().min(0).max(1).optional() }).strict(),
   z.object({ kind: z.literal("glow"), blur: z.number().min(0).max(40).optional(), color: Color.optional(), opacity: z.number().min(0).max(1).optional() }).strict(),
+  // Film greni: şeklin içine koyulaştıran ince gürültü (amount 0..1, size = tane sıklığı çarpanı). Sadece SVG hattında; `material` dolgulu katmanlarda yok sayılır.
+  z.object({ kind: z.literal("grain"), amount: z.number().min(0).max(1).optional(), size: z.number().positive().max(8).optional(), seed: z.number().int().min(0).max(9999).optional() }).strict(),
 ]);
 export type Effect = z.infer<typeof EffectSchema>;
 
@@ -60,6 +65,7 @@ const common = {
   stroke: Stroke.optional(),
   effects: z.array(EffectSchema).optional(),
   opacity: z.number().min(0).max(1).optional(),
+  blend: z.enum(BLEND_MODES).optional(), // alttaki katmanlarla karışım (PNG hattında; compileDesign tek başına SVG'de uygulamaz)
   hidden: z.boolean().optional(),
 };
 // Kutu geometrisi: ya inset (tuvalin kenarından içeri) ya da x/y/w/h.
@@ -181,6 +187,13 @@ function effectStep(e: Effect, cur: string, out: string): string {
         <feComposite in="${out}_c" in2="${out}_o" operator="in" result="${out}_m"/>
         <feComposite in="${out}_m" in2="SourceAlpha" operator="in" result="${out}_k"/>
         <feMerge result="${out}"><feMergeNode in="${cur}"/><feMergeNode in="${out}_k"/></feMerge>`;
+    case "grain": {
+      const a = e.amount ?? 0.3;
+      return `<feTurbulence type="fractalNoise" baseFrequency="${0.9 * (e.size ?? 1)}" numOctaves="2" seed="${e.seed ?? 3}" result="${out}_n"/>
+        <feColorMatrix in="${out}_n" type="matrix" values="${-a} 0 0 0 1  ${-a} 0 0 0 1  ${-a} 0 0 0 1  0 0 0 0 1" result="${out}_m"/>
+        <feBlend in="${out}_m" in2="${cur}" mode="multiply" result="${out}_x"/>
+        <feComposite in="${out}_x" in2="SourceAlpha" operator="in" result="${out}"/>`;
+    }
     case "glow":
       return `<feGaussianBlur in="SourceAlpha" stdDeviation="${e.blur ?? 6}" result="${out}_g"/>
         <feFlood flood-color="${e.color ?? "#ffd27a"}" flood-opacity="${e.opacity ?? 0.8}" result="${out}_c"/>
@@ -255,6 +268,9 @@ function expandGem(g: Extract<Layer, { kind: "gem" }>): Layer[] {
     const P = pts(r, 0.85), c: [number, number] = [cx, cy], shades = [light, g.color, dark, mid];
     P.forEach((p, i) => out.push(tri(`f${i}`, [c, p, P[(i + 1) % P.length]], P.length === 6 ? [light, g.color, mid, dark, mid, g.color][i] : shades[i])));
   }
+  // faset masası (yüzlerin üstüne açık tablo) + alt sağda zayıf yansıma: düz renkli üçgenleri camsı gösterir
+  if (shape !== "round") out.push({ id: `${id}__table`, kind: "polygon", points: pts(r * 0.46, 0.85), fill: { kind: "solid", color: hi, opacity: 0.22 }, stroke: { color: hi, width: 0.8, opacity: 0.45 } });
+  out.push({ id: `${id}__bounce`, kind: "ellipse", cx: cx + r * 0.3, cy: cy + r * 0.36, rx: r * 0.2, ry: r * 0.09, fill: { kind: "solid", color: light, opacity: 0.35 } });
   out.push({ id: `${id}__glint`, kind: "ellipse", cx: cx - r * 0.28, cy: cy - r * 0.32, rx: r * 0.22, ry: r * 0.12, fill: { kind: "solid", color: hi, opacity: 0.75 } });
   return out.map((l) => ({ ...l, opacity: g.opacity, hidden: g.hidden }) as Layer);
 }
@@ -380,11 +396,11 @@ export function compileDesign(d: Design): string {
     if (f?.kind === "solid") fill = f.color;
     else if (f?.kind === "texture" || f?.kind === "material") fill = "#ffffff";
     else if (f?.kind === "linear" || f?.kind === "radial") {
-      const stops = f.stops.map(([o, c]) => `<stop offset="${o}" stop-color="${c}"/>`).join("");
+      const stops = f.stops.map(([o, c]) => `<stop offset="${o}" stop-color="${c.slice(0, 7)}"${c.length > 7 ? ` stop-opacity="${f2(parseInt(c.slice(7), 16) / 255)}"` : ""}/>`).join("");
       if (f.kind === "linear") {
         const a = ((f.angle ?? 90) * Math.PI) / 180, cx = Math.cos(a) / 2, cy = Math.sin(a) / 2;
         defs.push(`<linearGradient id="g_${l.id}" x1="${f2(0.5 - cx)}" y1="${f2(0.5 - cy)}" x2="${f2(0.5 + cx)}" y2="${f2(0.5 + cy)}">${stops}</linearGradient>`);
-      } else defs.push(`<radialGradient id="g_${l.id}" cx=".4" cy=".35" r=".75">${stops}</radialGradient>`);
+      } else defs.push(`<radialGradient id="g_${l.id}" cx="${f.cx ?? 0.4}" cy="${f.cy ?? 0.35}" r="${f.r ?? 0.75}">${stops}</radialGradient>`);
       fill = `url(#g_${l.id})`;
     }
     const steps: string[] = [];

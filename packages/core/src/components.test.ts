@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { BUTTON_STATES, barRecipe, buttonRecipe, slotRecipe } from "./components.js";
+import { BUTTON_STATES, barRecipe, buttonRecipe, skillBarRecipe, slotRecipe } from "./components.js";
 import { THEME_NAMES } from "./container.js";
 import { compileDesign, expandLayers, type Design } from "./design.js";
 import { layoutWidget } from "./layout.js";
@@ -93,4 +93,10 @@ assert.equal(ps.barFillStyle, "Scale");
 assert.deepEqual(ps.borderPadding, { x: 4, y: 4 });
 // durum asset'i eksikse net hata
 assert.throws(() => unrealPlan(b.widget, (id) => (id === "play_pressed" ? undefined : assetsOf(b.designs).get(id))), /play_pressed/);
+// yetenek çubuğu: 4 tuş, her slot için simge + tuş kapağı; soğuma yalnızca verilen slotta
+const sb = skillBarRecipe({ id: "sk", cooldowns: [0, 0.5] });
+const sbNodes = [...(function* w(n: Node): Generator<Node> { yield n; for (const c of n.children) yield* w(c); })(sb.widget.root)];
+assert.equal(sbNodes.filter((n) => /^Key\d$/.test(n.id)).map((n) => n.text).join(""), "QWER");
+assert.deepEqual(sbNodes.filter((n) => n.id.startsWith("Cooldown")).map((n) => n.id), ["Cooldown2"]);
+for (const d of sb.designs) compileDesign(d);
 console.log("components ok");
