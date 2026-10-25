@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { boxBlur, shadeMaterial } from "./material.js";
+import { boxBlur, edgeDistance, shadeMaterial } from "./material.js";
 
 const ones = (w: number, h: number) => new Float32Array(w * h).fill(1);
 const lum = (d: Uint8Array, x: number, y: number, w: number) => { const o = (y * w + x) * 4; return (d[o] + d[o + 1] + d[o + 2]) / 3; };
@@ -56,4 +56,15 @@ assert.ok(Math.sqrt(varr / 4096) > 8, "taş dokusu düz");
 const t0 = Date.now();
 shadeMaterial({ w: 256, h: 256, mask: ones(256, 256), fill: { preset: "stone" }, tileable: true });
 assert.ok(Date.now() - t0 < 1500, `yavaş: ${Date.now() - t0}ms`);
+// edgeDistance: tam Öklid — r=75 daire, merkezden ρ uzaklıkta mesafe r−ρ olmalı, hem eksen hem 45° yönde (8 yönlü chamfer çaprazda ~1.5 px şişirir)
+{
+  const n = 161, c = 80, r = 75, mask = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) mask[y * n + x] = Math.hypot(x - c, y - c) <= r ? 1 : 0;
+  const d = edgeDistance(mask, n, n);
+  for (const rho of [30, 50]) {
+    const k = Math.round(rho * Math.SQRT1_2);
+    assert.ok(Math.abs(d[c * n + c + rho] - (r - rho)) < 0.8, `eksen ρ=${rho}`);
+    assert.ok(Math.abs(d[(c + k) * n + c + k] - (r - rho)) < 0.8, `çapraz ρ=${rho}`);
+  }
+}
 console.log("material ok");

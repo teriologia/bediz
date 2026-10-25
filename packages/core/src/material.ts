@@ -69,20 +69,41 @@ function worley(u: number, v: number, nx: number, ny: number, seed: number) {
 }
 
 // ---------- görüntü işleme yardımcıları ----------
-/** Maskenin içindeki her piksel için en yakın dış piksele mesafe (px); tuval sınırı dış sayılır. */
+/**
+ * Maskenin içindeki her piksel için en yakın dış kenara mesafe (px); tuval sınırı dış sayılır.
+ * Tam Öklid mesafesi (Felzenszwalb): 8 yönlü chamfer, çapraz ve eğri kenarlarda sekizgen basamaklar üretiyordu.
+ * Kenar pikselinde antialias kapsama oranı mesafeyi alt piksel düzeyinde düzeltir, sonuç 3x3 yumuşatılır.
+ */
 export function edgeDistance(mask: Float32Array, w: number, h: number): Float32Array {
-  const d = new Float32Array(w * h);
-  for (let i = 0; i < d.length; i++) d[i] = mask[i] > 0.5 ? 1e9 : 0;
-  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : d[y * w + x]);
+  const W = w + 2, H = h + 2, INF = 1e12, sq = new Float64Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const inside = x > 0 && y > 0 && x <= w && y <= h && mask[(y - 1) * w + (x - 1)] > 0.5;
+    sq[y * W + x] = inside ? INF : 0;
+  }
+  const n = Math.max(W, H), f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
+  const pass = (len: number, get: (k: number) => number, put: (k: number, val: number) => void) => {
+    for (let k = 0; k < len; k++) f[k] = get(k);
+    let r = 0; v[0] = 0; z[0] = -INF; z[1] = INF;
+    for (let q = 1; q < len; q++) {
+      let sx = ((f[q] + q * q) - (f[v[r]] + v[r] * v[r])) / (2 * q - 2 * v[r]);
+      while (sx <= z[r]) { r--; sx = ((f[q] + q * q) - (f[v[r]] + v[r] * v[r])) / (2 * q - 2 * v[r]); }
+      r++; v[r] = q; z[r] = sx; z[r + 1] = INF;
+    }
+    r = 0;
+    for (let q = 0; q < len; q++) { while (z[r + 1] < q) r++; d[q] = (q - v[r]) ** 2 + f[v[r]]; }
+    for (let k = 0; k < len; k++) put(k, d[k]);
+  };
+  for (let x = 0; x < W; x++) pass(H, (k) => sq[k * W + x], (k, val) => { sq[k * W + x] = val; });
+  for (let y = 0; y < H; y++) pass(W, (k) => sq[y * W + k], (k, val) => { sq[y * W + k] = val; });
+  // Piksel merkezinden kenara: merkezler arası mesafe − 0.5; kenar pikselinde kapsama (mask) ile alt piksel düzeltmesi.
+  const out = new Float32Array(w * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = y * w + x;
-    if (d[i]) d[i] = Math.min(d[i], at(x - 1, y) + 1, at(x, y - 1) + 1, at(x - 1, y - 1) + 1.414, at(x + 1, y - 1) + 1.414);
+    if (mask[i] <= 0.5) continue;
+    const dc = Math.sqrt(sq[(y + 1) * W + (x + 1)]);
+    out[i] = Math.max(0, dc - 1 + mask[i] - 0.5);
   }
-  for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
-    const i = y * w + x;
-    if (d[i]) d[i] = Math.min(d[i], at(x + 1, y) + 1, at(x, y + 1) + 1, at(x + 1, y + 1) + 1.414, at(x - 1, y + 1) + 1.414);
-  }
-  return d;
+  return boxBlur(out, w, h, 1);
 }
 
 /** Ayrılabilir kutu bulanıklığı; kenarlar kıstırılır, wrap=true ise sarılır (dikişsiz tile). */
