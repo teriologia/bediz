@@ -2,3 +2,8 @@ node_modules
 dist
 *.tsbuildinfo
 *.project.json.tmp
+
+# MCP sunucusunun varsayılan proje dosyası ve dışa aktarılan görseller (kullanıcı çıktısı, repoya girmez)
+bediz.project.json
+art/
+unreal/
