@@ -29,6 +29,11 @@ export async function renderWidget(widget: Widget, assets: Map<string, Asset>, b
     if ((n.type === "Border" || n.type === "Image") && n.brush) {
       const a = assets.get(n.brush.asset);
       if (!a) throw new Error(`${n.id}: asset yok: ${n.brush.asset}`);
+      if (a.tile) {
+        const tiled = await sharp({ create: { width: w, height: h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+          .composite([{ input: a.path, tile: true }]).png().toBuffer();
+        return void (await clipped(tiled, x, y, w, h));
+      }
       const s = a.slice;
       const fits = s && w >= s.left + s.right && h >= s.top + s.bottom;
       await clipped(fits ? await renderNineSlice(a, w, h) : await sharp(a.path).resize(w, h, { fit: "fill" }).png().toBuffer(), x, y, w, h);

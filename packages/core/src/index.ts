@@ -2,3 +2,7 @@ export * from "./slice.js";
 export * from "./detect.js";
 export * from "./scene.js";
 export * from "./layout.js";
+export * from "./design.js";
+export * from "./seamless.js";
+export * from "./material.js";
+export * from "./effects.js";

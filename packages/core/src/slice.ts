@@ -15,6 +15,7 @@ export const AssetSchema = z.object({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   slice: SliceSchema.optional(),
+  tile: z.boolean().optional(), // dikişsiz döşenen doku (Unreal: Image + Tiling)
 });
 export type Asset = z.infer<typeof AssetSchema>;
 
@@ -29,7 +30,9 @@ export function validateSlice(s: Slice, w: number, h: number): void {
  * Unreal UMG brush: DrawAs=Box, Margin normalize (0-1) ve sıra Left, Top, Right, Bottom.
  */
 export function toUnrealBrush(a: Asset) {
-  if (!a.slice) throw new Error(`asset ${a.id} için slice tanımlı değil`);
+  if (a.tile) return { DrawAs: "Image", ImageSize: { X: a.width, Y: a.height }, Tiling: "Both" };
+  // Slice yoksa düz görsel (sprite): Box değil Image olarak çizilir.
+  if (!a.slice) return { DrawAs: "Image", ImageSize: { X: a.width, Y: a.height } };
   validateSlice(a.slice, a.width, a.height);
   const { left, top, right, bottom } = a.slice;
   return {
