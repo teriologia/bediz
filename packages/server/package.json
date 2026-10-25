@@ -14,7 +14,7 @@
     "zod": "^3.23.8"
   },
   "scripts": {
-    "test": "tsc -b && node dist/render.test.js && node dist/state.test.js && node dist/scene.test.js && node dist/text.test.js && node dist/http.test.js && node dist/screens.test.js"
+    "test": "tsc -b && node dist/render.test.js && node dist/state.test.js && node dist/scene.test.js && node dist/text.test.js && node dist/http.test.js && node dist/screens.test.js && node dist/golden.test.js"
   },
   "devDependencies": {
     "@types/opentype.js": "^1.3.10"
