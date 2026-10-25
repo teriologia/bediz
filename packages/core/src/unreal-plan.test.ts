@@ -6,7 +6,7 @@ import { unrealPlan, type PlanStep } from "./unreal-plan.js";
 
 const asArt = (r: ReturnType<typeof containerRecipe>) => {
   const m = new Map<string, Asset>();
-  for (const d of [r.bg, r.frame, r.gem!]) m.set(d.id, { id: d.id, path: `C:\\art\\${d.id}.png`, width: d.width, height: d.height, slice: d.slice, tile: d.kind === "tile" || undefined });
+  for (const d of [r.bg, r.frame, r.shade!, r.gem!]) m.set(d.id, { id: d.id, path: `C:\\art\\${d.id}.png`, width: d.width, height: d.height, slice: d.slice, tile: d.kind === "tile" || undefined });
   return m;
 };
 const r = containerRecipe({ id: "gold_stone" });
@@ -18,7 +18,7 @@ const vals = (s: PlanStep) => JSON.parse(s.arguments.values as string);
 assert.equal(plan.steps[0].tool, "create_folder");
 assert.equal(plan.steps.at(-1)!.tool, "save_assets");
 assert.equal(plan.steps.at(-2)!.tool, "CompileWidgetBlueprint");
-assert.equal(by("import_file").length, 3);
+assert.equal(by("import_file").length, 4);
 assert.equal(by("CreateWidgetBlueprint").length, 1);
 const lastImport = plan.steps.map((s) => s.tool).lastIndexOf("import_file");
 assert.ok(plan.steps.findIndex((s) => s.tool === "CreateWidgetBlueprint") > lastImport);
@@ -27,12 +27,12 @@ assert.equal(plan.textures["gold_stone_frame"], "/Game/BedizTest/Plan/T_gold_sto
 
 // doku ayarları: tile Wrap, çerçeve/sprite Clamp
 const texSets = by("set_properties").filter((s) => "compressionSettings" in vals(s));
-assert.equal(texSets.length, 3);
+assert.equal(texSets.length, 4);
 assert.equal(vals(texSets[0]).addressX, "TA_Wrap");
 assert.equal(vals(texSets[1]).addressX, "TA_Clamp");
 
 // AddWidget: SizeBox kök, sonra Root canvas ve çocukları; her $ref daha önce kaydedilmiş olmalı
-assert.deepEqual(by("AddWidget").map((s) => s.save), ["SizeBox", "Root", "Background", "Frame", "Gem"]);
+assert.deepEqual(by("AddWidget").map((s) => s.save), ["SizeBox", "Root", "Background", "Shade", "Frame", "Gem"]);
 const saved = new Set<string>();
 for (const s of plan.steps) {
   const walkRefs = (v: unknown): void => {
@@ -66,7 +66,7 @@ const slotOf = (name: string) => {
   return vals(plan.steps[i + 1]);
 };
 assert.deepEqual(slotOf("Gem").layoutData.alignment, { x: 0.5, y: 0.5 });
-assert.deepEqual(slotOf("Gem").layoutData.offsets, r.widget.root.children[2].slot!.offsets);
+assert.deepEqual(slotOf("Gem").layoutData.offsets, r.widget.root.children.find((c) => c.id === "Gem")!.slot!.offsets);
 assert.deepEqual(slotOf("Frame").layoutData.anchors, { minimum: { x: 0, y: 0 }, maximum: { x: 1, y: 1 } });
 assert.deepEqual(vals(plan.steps[plan.steps.findIndex((s) => s.save === "SizeBox") + 1]).widthOverride, r.widget.width);
 assert.deepEqual(slotOf("Root"), { padding: { left: 0, top: 0, right: 0, bottom: 0 }, horizontalAlignment: "HAlign_Fill", verticalAlignment: "VAlign_Fill" });

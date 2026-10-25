@@ -104,7 +104,7 @@ export function uiKitRecipe(input: UiKitInput) {
   const base = { theme, frame: o.frame, style: o.style } as const;
   const panel = containerRecipe({ id: `${id}_panel`, theme, frame: o.frame, style: o.style, width: 420, height: 240 });
   const components: Record<string, ComponentRecipe> = {
-    panel: { theme, designs: [panel.bg, panel.frame, ...(panel.gem ? [panel.gem] : [])], widget: panel.widget },
+    panel: { theme, designs: [panel.bg, panel.frame, ...(panel.shade ? [panel.shade] : []), ...(panel.gem ? [panel.gem] : [])], widget: panel.widget },
     button: buttonRecipe({ id: `${id}_button`, label: "BAŞLA", width: 190, height: 48, ...base }),
     tabs: tabsRecipe({ id: `${id}_tabs`, labels: ["HARİTALAR", "BOSSLAR", "ENDLESS"], ...base }),
     bar: barRecipe({ id: `${id}_bar`, width: 240, height: 24, percent: 0.65, ...base }),

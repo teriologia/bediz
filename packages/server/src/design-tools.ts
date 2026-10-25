@@ -193,14 +193,15 @@ export function registerDesignTools(server: McpServer) {
     "create_container",
     "Tek çağrıda hazır container: dikişsiz zemin dokusu (tile) + 9-slice çerçeve (altın bant, arduvaz bant, iç çıta, köşe süsü, çatlak) + üstte ortalanmış mücevher. " +
     "Önce theme seç (gold-stone, silver-slate, bronze-wood, ruby-blocks, emerald-bronze), istediğin alanı ayrıca vererek ez. " +
-    "<id>_bg, <id>_frame, <id>_gem tasarımlarını ve <id> widget'ını oluşturup dışa aktarır, önizlemeyi döndürür. Aynı id ile tekrar çağrılırsa üzerine yazar. " +
+    "<id>_bg, <id>_frame, <id>_shade (vinyet + ışık; shade:false ile kapanır), <id>_gem tasarımlarını ve <id> widget'ını oluşturup dışa aktarır, önizlemeyi döndürür. Aynı id ile tekrar çağrılırsa üzerine yazar. " +
     "Sonra tasarımları update_layer/add_layer ile inceltip export_design ile yenileyebilirsin.",
     ContainerInputSchema.shape,
     async (input) => {
       const r = containerRecipe(input);
-      const ds = [r.bg, r.frame, ...(r.gem ? [r.gem] : [])];
+      const ds = [r.bg, r.frame, ...(r.shade ? [r.shade] : []), ...(r.gem ? [r.gem] : [])];
       for (const d of ds) { compileDesign(d); designs.set(d.id, d); }
       if (!r.gem) designs.delete(`${input.id}_gem`);
+      if (!r.shade) designs.delete(`${input.id}_shade`);
       const exported = await Promise.all(ds.map(exportDesign));
       widgets.set(r.widget.id, r.widget);
       notify();

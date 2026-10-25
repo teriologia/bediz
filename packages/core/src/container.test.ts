@@ -10,7 +10,13 @@ assert.equal(a.theme, "gold-stone");
 const m = a.frame.slice!.left;
 assert.ok(m >= a.resolved.cornerSize + 2, "slice marjı süsü kapsamalı (yoksa gerilir)");
 assert.equal(a.frame.width, 2 * m + 96);
-assert.equal(a.widget.root.children.map((c) => c.id).join(), "Background,Frame,Gem");
+assert.equal(a.widget.root.children.map((c) => c.id).join(), "Background,Shade,Frame,Gem");
+// shade:false derinlik katmanını kaldırır; dim zemin tasarımına karartma katmanı ekler (0 ise eklemez)
+const ns = containerRecipe({ id: "ns", shade: false, dim: 0 });
+assert.equal(ns.widget.root.children.map((c) => c.id).join(), "Background,Frame,Gem");
+assert.equal(ns.shade, undefined);
+assert.deepEqual(ns.bg.layers.map((l) => l.id), ["ground"]);
+assert.deepEqual(a.bg.layers.map((l) => l.id), ["ground", "dim"]);
 assert.equal(a.gem!.width, Math.round(a.resolved.gemSize * 2.2));
 
 // tema + açık parametre: açık olan kazanır, tema varsayılanı ezer

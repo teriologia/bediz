@@ -15,15 +15,16 @@ export interface ContainerParams {
   ornaments: boolean; cornerStyle: (typeof STYLES)[number]; cornerSize: number;
   gem: boolean; gemColor: string; gemShape: "diamond" | "round" | "hex"; gemSize: number;
   style: "metal" | "ghost";
+  dim: number; shade: boolean;
 }
 
 const BASE: ContainerParams = {
   width: 480, height: 320, background: "stone", pattern: "flagstone", frame: "gold", band: "slate",
   thickness: 30, radius: 14, chamfer: true, cracks: true, wear: 0.5,
-  ornaments: true, cornerStyle: "filigree", cornerSize: 64, gem: true, gemColor: "#2a9fb0", gemShape: "diamond", gemSize: 44, style: "metal",
+  ornaments: true, cornerStyle: "filigree", cornerSize: 64, gem: true, gemColor: "#2a9fb0", gemShape: "diamond", gemSize: 44, style: "metal", dim: 0.28, shade: true,
 };
 // ghost: ince çift çizgi, süs/mücevher/çatlak yok; çizgi rengi çerçeve metalinden gelir.
-const GHOST: Partial<ContainerParams> = { thickness: 16, gem: false, ornaments: false, cracks: false };
+const GHOST: Partial<ContainerParams> = { thickness: 16, gem: false, ornaments: false, cracks: false, dim: 0.45 };
 export const GHOST_LINE: Record<string, string> = { gold: "#c9a45a", silver: "#b9c2cc", bronze: "#b87b45", wood: "#a9855a", stone: "#a09a8e", slate: "#8e9aa6" };
 
 /** Hazır görünümler: sadece farkları yazılır, kullanıcı parametreleri üstüne biner. */
@@ -46,6 +47,7 @@ export const ContainerInputSchema = z.object({
   chamfer: z.boolean().optional(), cracks: z.boolean().optional(), wear: z.number().min(0).max(1).optional(),
   ornaments: z.boolean().optional(), cornerStyle: z.enum(STYLES).optional(), cornerSize: z.number().int().min(24).max(200).optional(),
   style: z.enum(["metal", "ghost"]).optional(), // ghost: ince çizgili çerçeve (metal bevel/süs yok)
+  dim: z.number().min(0).max(0.9).optional(), shade: z.boolean().optional(), // dim: zemini karartma; shade: vinyet + sıcak ışık katmanı (derinlik)
   gem: z.boolean().optional(), gemColor: Hex.optional(), gemShape: z.enum(["diamond", "round", "hex"]).optional(), gemSize: z.number().int().min(16).max(160).optional(),
 }).strict();
 export type ContainerInput = z.infer<typeof ContainerInputSchema>;
@@ -53,7 +55,7 @@ export type ContainerInput = z.infer<typeof ContainerInputSchema>;
 export interface ContainerRecipe {
   theme: ThemeName;
   resolved: ContainerParams;
-  bg: Design; frame: Design; gem?: Design; widget: Widget;
+  bg: Design; frame: Design; gem?: Design; shade?: Design; widget: Widget;
 }
 
 /**
@@ -85,7 +87,14 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
 
   const bg = DesignSchema.parse({ id: `${id}_bg`, kind: "tile", width: 256, height: 256, layers: [
     { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: p.background, pattern: p.pattern, seed: 5, wear: p.wear * 0.8 } },
+    ...(p.dim > 0 ? [{ id: "dim", kind: "box", inset: 0, fill: { kind: "solid", color: "#000000", opacity: p.dim } }] : []),
   ] });
+  // Derinlik katmanı: ortadan kenara sönen sıcak ışık (screen) + kenar vinyeti; zeminle çerçeve arasında gerilir.
+  const lineHex = GHOST_LINE[p.frame] ?? "#c9a45a";
+  const shade = p.shade ? DesignSchema.parse({ id: `${id}_shade`, kind: "sprite", width: 256, height: 256, layers: [
+    { id: "light", kind: "box", inset: 0, blend: "screen", fill: { kind: "radial", cx: 0.5, cy: 0.38, r: 0.6, stops: [[0, `${lineHex}40`], [1, `${lineHex}00`]] } },
+    { id: "vignette", kind: "box", inset: 0, fill: { kind: "radial", cx: 0.5, cy: 0.5, r: 0.8, stops: [[0.35, "#00000000"], [1, "#000000b8"]] } },
+  ] }) : undefined;
   const line = GHOST_LINE[p.frame] ?? "#c9a45a";
   const ghostLayers = [
     { id: "shade", kind: "ring", inset: 0, thickness: 4, ...corner(0), fill: { kind: "solid", color: "#000000", opacity: 0.55 }, effects: [{ kind: "shadow", dx: 0, dy: 2, blur: 5, opacity: 0.6 }] },
@@ -119,10 +128,11 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
   const full = { anchors: { minX: 0, minY: 0, maxX: 1, maxY: 1 } };
   const widget = WidgetSchema.parse({ id, width: p.width, height: p.height + ov, root: { id: "Root", type: "CanvasPanel", children: [
     { id: "Background", type: "Image", brush: { asset: bg.id }, slot: { ...full, offsets: { left: t - 2, top: ov + t - 2, right: t - 2, bottom: t - 2 } }, children: [] },
+    ...(shade ? [{ id: "Shade", type: "Image", brush: { asset: shade.id }, slot: { ...full, offsets: { left: t - 2, top: ov + t - 2, right: t - 2, bottom: t - 2 } }, children: [] }] : []),
     { id: "Frame", type: "Image", brush: { asset: frame.id }, slot: { ...full, offsets: { left: 0, top: ov, right: 0, bottom: 0 } }, children: [] },
     ...(gem ? [{ id: "Gem", type: "Image", brush: { asset: gem.id }, slot: {
       anchors: { minX: 0.5, minY: 0, maxX: 0.5, maxY: 0 }, offsets: { left: 0, top: ov + Math.round(t * 0.45), right: G, bottom: G }, alignment: { x: 0.5, y: 0.5 } }, children: [] }] : []),
   ] } });
 
-  return { theme, resolved: p, bg, frame, gem, widget };
+  return { theme, resolved: p, bg, frame, gem, shade, widget };
 }

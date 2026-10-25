@@ -187,22 +187,37 @@ function fields(def: Def, p: MaterialParams, w: number, h: number, dist?: Float3
   } else if (def.family === "metal") {
     const nxs = rnd(w, 200 / sc), nys = Math.max(2, rnd(h, 1.4)), nxf = rnd(w, 40), nyf = Math.max(2, rnd(h, 1.2));
     // Kenara uzaklığın gradyanı kenarı dik keser; fırça darbeleri teğet boyunca akar (üstte yatay, yanlarda dikey, köşede çapraz).
-    // Yönün işareti sabitlenir (orta eksende kopukluk olmasın); gradyan yoksa yatay.
-    const D = dist && Float32Array.from(dist, (d) => Math.min(d, 24));
+    // Yön alanı: gradyanın yön tensörü (işaretsiz) güven ağırlığıyla yatay yöne harmanlanıp yumuşatılır; böylece kenardan uzaklaşırken
+    // ve köşelerde yön ani kopmaz (eski sürüm 24 px'te yatay yöne sıçrıyordu, dikey kenarlarda işaret titriyordu).
+    let ang: Float32Array | undefined, cf: Float32Array | undefined;
+    if (dist) {
+      const D = Float32Array.from(dist, (d) => Math.min(d, 24)), conf0 = new Float32Array(n), sxx = new Float32Array(n), sxy = new Float32Array(n), syy = new Float32Array(n);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = y * w + x, gx = D[y * w + Math.min(w - 1, x + 1)] - D[y * w + Math.max(0, x - 1)], gy = D[Math.min(h - 1, y + 1) * w + x] - D[Math.max(0, y - 1) * w + x];
+        const gl = Math.hypot(gx, gy), conf = gl > 0.2 ? smooth(clamp((24 - D[i]) / 10)) : 0, nx = gl > 0.2 ? gx / gl : 0, ny = gl > 0.2 ? gy / gl : 0;
+        sxx[i] = conf * nx * nx; sxy[i] = conf * nx * ny; syy[i] = conf * ny * ny + (1 - conf); conf0[i] = conf;
+      }
+      const bxx = boxBlur(sxx, w, h, 3), bxy = boxBlur(sxy, w, h, 3), byy = boxBlur(syy, w, h, 3);
+      ang = new Float32Array(n); cf = boxBlur(conf0, w, h, 3);
+      // teğet = gradyan yönü + 90°; (-75°,105°] aralığına indirilir (dikey teğet bu aralığın ortasında, işaret titremez)
+      for (let i = 0; i < n; i++) {
+        let t = 0.5 * Math.atan2(2 * bxy[i], bxx[i] - byy[i]) + Math.PI / 2;
+        while (t > (105 * Math.PI) / 180) t -= Math.PI;
+        while (t <= (-75 * Math.PI) / 180) t += Math.PI;
+        ang[i] = t;
+      }
+    }
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const i = y * w + x, u = (x + 0.5) / w, v = (y + 0.5) / h;
       let streak: number, scratch: number;
-      if (D) {
-        const gx = D[y * w + Math.min(w - 1, x + 1)] - D[y * w + Math.max(0, x - 1)], gy = D[Math.min(h - 1, y + 1) * w + x] - D[Math.max(0, y - 1) * w + x];
-        const gl = Math.hypot(gx, gy);
-        let tx = gl > 0.2 ? -gy / gl : 1, ty = gl > 0.2 ? gx / gl : 0;
-        if (tx < 0 || (tx === 0 && ty < 0)) { tx = -tx; ty = -ty; }
-        const along = x * tx + y * ty + 4096, across = -x * ty + y * tx + 4096;
-        streak = vnoise(along / (200 / sc), across / 1.4, 8192, 8192, seed);
-        scratch = vnoise(along / 40, across / 1.2, 8192, 8192, seed + 4);
-      } else {
-        streak = vnoise(u * nxs, v * nys, nxs, nys, seed);
-        scratch = vnoise(u * nxf, v * nyf, nxf, nyf, seed + 4);
+      // Yatay fırça her yerde hesaplanır; kenara yakınken, kenara paralel fırça (across = kenara uzaklık: çizgiler kenarı birebir izler,
+      // dönen koordinat tabanının yarattığı girdap yok; along yalnız düşük frekanslı) çapraz geçişle karıştırılır.
+      streak = vnoise(u * nxs, v * nys, nxs, nys, seed);
+      scratch = vnoise(u * nxf, v * nyf, nxf, nyf, seed + 4);
+      if (ang && cf && cf[i] > 0.001) {
+        const c = cf[i], along = x * Math.cos(ang[i]) + y * Math.sin(ang[i]) + 4096, across = dist![i] + 4096;
+        streak += c * (vnoise(along / (200 / sc), across / 1.4, 8192, 8192, seed) - streak);
+        scratch += c * (vnoise(along / 40, across / 1.2, 8192, 8192, seed + 4) - scratch);
       }
       const mott = fbm(u, v, rnd(w, 120), rnd(h, 120), 3, seed + 9);
       H[i] = (streak - 0.5) * amp * 0.45 + (scratch - 0.5) * amp * 0.25 + (mott - 0.5) * amp * 2.4;
