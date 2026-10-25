@@ -1,19 +1,32 @@
+import { basename, resolve } from "node:path";
+import sharp from "sharp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { SliceSchema, toUnrealBrush, validateSlice, type Asset } from "@bediz/core";
+import { SliceSchema, toUnrealBrush, validateSlice } from "@bediz/core";
+import { assets, getAsset, notify } from "./state.js";
+import { renderNineSlice } from "./render.js";
+import { startHttp } from "./http.js";
 
-// shortcut: bellek içi durum, kalıcı proje dosyası + editör WS senkronu sonraki adım.
-const assets = new Map<string, Asset>();
+// shortcut: bellek içi durum, kalıcı proje dosyası sonraki adım.
+startHttp(Number(process.env.BEDIZ_PORT ?? 5757));
 
 const server = new McpServer({ name: "bediz", version: "0.0.1" });
 const text = (v: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(v, null, 2) }] });
 
 server.tool(
   "register_asset",
-  "Bir texture'ı id, dosya yolu ve piksel boyutuyla kaydeder.",
-  { id: z.string(), path: z.string(), width: z.number().int().positive(), height: z.number().int().positive() },
-  async (a) => { assets.set(a.id, a); return text(a); },
+  "Bir texture dosyasını kaydeder; boyutu dosyadan okunur. id verilmezse dosya adı kullanılır.",
+  { path: z.string(), id: z.string().optional() },
+  async ({ path, id }) => {
+    const abs = resolve(path);
+    const { width, height } = await sharp(abs).metadata();
+    if (!width || !height) throw new Error(`görsel okunamadı: ${abs}`);
+    const a = { id: id ?? basename(abs).replace(/\.[^.]+$/, ""), path: abs, width, height };
+    assets.set(a.id, a);
+    notify();
+    return text(a);
+  },
 );
 
 server.tool(
@@ -21,11 +34,21 @@ server.tool(
   "Asset için 9-slice kenarlarını (piksel) belirler.",
   { id: z.string(), slice: SliceSchema },
   async ({ id, slice }) => {
-    const a = assets.get(id);
-    if (!a) throw new Error(`asset yok: ${id}`);
+    const a = getAsset(id);
     validateSlice(slice, a.width, a.height);
     a.slice = slice;
+    notify();
     return text(a);
+  },
+);
+
+server.tool(
+  "render_preview",
+  "Asset'i verilen boyutta 9-slice olarak çizer ve PNG döndürür (sonucu görüp slice'ı düzeltmek için).",
+  { id: z.string(), width: z.number().int().positive().max(4096), height: z.number().int().positive().max(4096) },
+  async ({ id, width, height }) => {
+    const png = await renderNineSlice(getAsset(id), width, height);
+    return { content: [{ type: "image" as const, data: png.toString("base64"), mimeType: "image/png" }] };
   },
 );
 
@@ -33,11 +56,7 @@ server.tool(
   "export_unreal_brush",
   "Asset'in 9-slice'ını Unreal UMG Brush (Box, normalize Margin) olarak döndürür.",
   { id: z.string() },
-  async ({ id }) => {
-    const a = assets.get(id);
-    if (!a) throw new Error(`asset yok: ${id}`);
-    return text(toUnrealBrush(a));
-  },
+  async ({ id }) => text(toUnrealBrush(getAsset(id))),
 );
 
 await server.connect(new StdioServerTransport());

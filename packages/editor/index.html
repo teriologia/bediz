@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bediz</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #1e1e24; color: #ddd; font: 13px system-ui, sans-serif; }
+    canvas { display: block; }
+    #bar { position: fixed; top: 0; left: 0; right: 0; display: flex; gap: 16px; padding: 8px 12px; background: #15151a; z-index: 1; }
+    #bar label { display: flex; gap: 6px; align-items: center; }
+    #empty { position: fixed; inset: 0; display: grid; place-items: center; color: #777; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <label>Genişlik <input id="w" type="range" min="20" max="800" value="300" /><span id="wv">300</span></label>
+    <label>Yükseklik <input id="h" type="range" min="20" max="600" value="160" /><span id="hv">160</span></label>
+  </div>
+  <div id="empty">Asset yok. MCP'den register_asset ve set_slice çağır.</div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
