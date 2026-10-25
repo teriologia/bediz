@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /** UMG widget türlerinin yaptığımız alt kümesi. */
 export const NODE_TYPES = [
-  "CanvasPanel", "HorizontalBox", "VerticalBox", "Overlay", "Border", "Image", "TextBlock", "Button", "ProgressBar",
+  "CanvasPanel", "HorizontalBox", "VerticalBox", "Overlay", "Border", "Image", "TextBlock", "Button", "ProgressBar", "SizeBox",
 ] as const;
 export type NodeType = (typeof NODE_TYPES)[number];
 
@@ -41,6 +41,8 @@ export const nodePropShape = {
   percent: z.number().min(0).max(1).optional(), // ProgressBar doluluk
   inset: z.number().min(0).optional(), // ProgressBar: dolgunun oluk içindeki boşluğu (px)
   size: z.object({ x: z.number().positive(), y: z.number().positive() }).strict().optional(), // Image/ProgressBar boyutu
+  width: z.number().positive().optional(), // SizeBox: genişlik (yoksa içeriğinki)
+  height: z.number().positive().optional(), // SizeBox: yükseklik (yoksa içeriğinki)
   text: z.string().optional(), // TextBlock
   fontSize: z.number().positive().optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/, "renk #RRGGBB veya #RRGGBBAA olmalı").optional(),
@@ -57,6 +59,8 @@ export interface Node {
   percent?: number;
   inset?: number;
   size?: { x: number; y: number };
+  width?: number;
+  height?: number;
   text?: string;
   fontSize?: number;
   color?: string;
@@ -76,6 +80,7 @@ export const WidgetSchema = z.object({
   id: z.string().min(1),
   width: z.number().int().positive(),
   height: z.number().int().positive(),
+  fullscreen: z.boolean().optional(), // tam ekran: kendi boyutu yok, bulunduğu alanı doldurur (UE planında SizeBox sarmalayıcı eklenmez)
   root: NodeSchema,
 });
 export type Widget = z.infer<typeof WidgetSchema>;
@@ -92,7 +97,7 @@ export const findNode = (root: Node, id: string) => {
 /** Child kabul eden türler ve üst sınırı. */
 const MAX_CHILDREN: Record<NodeType, number> = {
   CanvasPanel: Infinity, HorizontalBox: Infinity, VerticalBox: Infinity, Overlay: Infinity,
-  Border: 1, Image: 0, TextBlock: 0, Button: 1, ProgressBar: 0,
+  Border: 1, Image: 0, TextBlock: 0, Button: 1, ProgressBar: 0, SizeBox: 1,
 };
 export function assertCanHaveChild(parent: Node) {
   if (parent.children.length >= MAX_CHILDREN[parent.type]) {
@@ -107,5 +112,6 @@ export function assertPropsFit(type: NodeType, p: Partial<Node>) {
   if (p.states && type !== "Button") bad("states", "Button");
   if ((p.fill || p.percent !== undefined || p.inset !== undefined) && type !== "ProgressBar") bad("fill/percent/inset", "ProgressBar");
   if (p.size && type !== "Image" && type !== "ProgressBar") bad("size", "Image/ProgressBar");
+  if ((p.width !== undefined || p.height !== undefined) && type !== "SizeBox") bad("width/height", "SizeBox");
   if ((p.text !== undefined || p.fontSize || p.color) && type !== "TextBlock") bad("text/fontSize/color", "TextBlock");
 }

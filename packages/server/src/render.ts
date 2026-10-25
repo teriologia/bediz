@@ -33,3 +33,17 @@ export async function renderNineSliceFrom(src: Buffer, a: Pick<Asset, "id" | "wi
   return sharp({ create: { width: w, height: h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite(parts).png().toBuffer();
 }
+
+/**
+ * Döşenebilir görseli (dosya yolu ya da PNG) w×h alana döşer. Alan döşemeden küçükse kırpar:
+ * sharp, `tile` girdisinin tuvalden büyük olmasına izin vermez ("must have same dimensions or smaller").
+ */
+export async function tileTo(src: string | Buffer, w: number, h: number): Promise<Buffer> {
+  const m = await sharp(src).metadata();
+  const tw = m.width!, th = m.height!;
+  const piece = w < tw || h < th
+    ? await sharp(src).extract({ left: 0, top: 0, width: Math.min(tw, w), height: Math.min(th, h) }).png().toBuffer()
+    : src;
+  if (w <= tw && h <= th) return Buffer.isBuffer(piece) ? piece : sharp(piece).png().toBuffer();
+  return sharp({ create: { width: w, height: h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: piece, tile: true }]).png().toBuffer();
+}

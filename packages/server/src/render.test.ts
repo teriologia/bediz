@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
-import { renderNineSlice } from "./render.js";
+import { renderNineSlice, tileTo } from "./render.js";
 
 // 30x30 kaynak: 10px kenarlı 3x3 ızgara, her bölge ayrı renk (R = sütun, G = satır).
 const raw = Buffer.alloc(30 * 30 * 4);
@@ -22,4 +22,13 @@ assert.deepEqual(px(97, 77), [200, 200]); // sağ alt köşe
 assert.deepEqual(px(50, 40), [100, 100]); // merkez uzamış
 assert.deepEqual(px(50, 2), [100, 0]);    // üst kenar
 await assert.rejects(renderNineSlice(a, 15, 80));
+// döşeme: tile'dan küçük/büyük/karışık alanlar (küçük alanda sharp'ın "same dimensions or smaller" hatası olmamalı)
+for (const [w, h] of [[10, 10], [20, 45], [100, 10], [75, 75], [90, 30]] as const) {
+  const t = await sharp(await tileTo(path, w, h)).raw().toBuffer({ resolveWithObject: true });
+  assert.deepEqual([t.info.width, t.info.height], [w, h]);
+}
+const big = await sharp(await tileTo(path, 100, 100)).raw().toBuffer({ resolveWithObject: true });
+const at = (x: number, y: number) => [...big.data.subarray((y * 100 + x) * big.info.channels, (y * 100 + x) * big.info.channels + 3)];
+assert.deepEqual(at(5, 7), at(35, 7), "30px'lik tile x ekseninde periyodik");
+assert.deepEqual(at(5, 7), at(5, 37), "y ekseninde periyodik");
 console.log("render ok");

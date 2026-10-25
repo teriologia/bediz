@@ -36,3 +36,17 @@ npm run dev -w @bediz/editor   # geliştirme: http://localhost:5173 (sunucuya 57
 - **Tasarım:** 9-slice için gerilmiş önizleme (genişlik/yükseklik kaydırıcıları) ya da kaynak + dilim çizgileri; tile için döşenmiş görünüm ve tile ızgarası; katmanları göz kutularıyla gizleme (sadece önizleme, tasarım değişmez).
 - **Widget:** bediz'in render'ı; üzerine gelince node çerçevesi ve `boyut @konum`, sağda node ağacı. Tekerlek: yakınlaştır, sürükle: kaydır, `F`: sığdır, `1`: 1:1.
 - **Güvenlik:** API yalnızca 127.0.0.1'de dinler; `Host` ve `Origin` doğrulanır (CORS `*` yok). Başka bir geliştirme kökeni için `BEDIZ_ORIGINS` (virgüllü).
+
+## Ekran şablonları
+
+Tek çağrıda tam ekran UI (1280×720 varsayılan): karartılmış zemin döşemesi + ortada çerçeveli panel (üstte mücevher) + panel içinde dikey yığın. Hepsi aynı kalıbı kullanır ve 5 temayı destekler.
+
+| Tool | İçerik |
+|---|---|
+| `create_main_menu` | başlık + `items` listesindeki her öğe için 4 durumlu `Button` |
+| `create_settings_menu` | kaydırıcılar (`ProgressBar`), açık/kapalı onay kutuları, alt butonlar |
+| `create_inventory_screen` | `columns × rows` slot ızgarası, `selected` hücreler parıltılı, alt bilgi satırı |
+
+Panel genişliği başlık ve etiketlere göre otomatik açılır; panel ekrana sığmazsa net bir hata verir (satır/sütun azalt ya da `height` artır). Widget'lar `fullscreen` işaretlidir: `export_unreal_plan` bunlara SizeBox sarmaz (UE'de bulundukları alanı doldururlar). Sahne modeline `SizeBox` (sabit `width`/`height`) node türü eklendi.
+
+`tools/run-unreal-plan.mjs` plan sonrası her opak dokunun UE'deki önizlemesini kaynak PNG ile karşılaştırır (UE bazen bozuk/siyah doku içe aktarabiliyor); bozuk görünen doku varsa hata verip çıkar.

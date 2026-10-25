@@ -11,8 +11,10 @@ export function registerUnrealTools(server: McpServer) {
     "Bir bediz widget'ını Unreal Engine'e aktarmak için sıralı, doğrulanmış unreal-mcp çağrı listesi üretir: klasör, doku importu ve UI doku ayarları, " +
     "widget blueprint, node ağacı (brush/margin/tiling, slot yerleşimi, yazı), derleme, kaydetme. Planı Unreal'da ÇALIŞTIRMAZ; adımları unreal-mcp'nin call_tool'uyla " +
     "sırayla uygula (howToRun'a bak) ya da dönen dosyayı `node tools/run-unreal-plan.mjs <dosya>` ile çalıştır. Widget'taki tüm asset'ler önce export_design ile dışa aktarılmış olmalı " +
-    "(create_container bunu zaten yapar). folder: /Game/... altında yeni/boş bir klasör seç; kullanıcıdan onay almadan uygulama.",
-    { widget: z.string(), folder: z.string().optional(), sizeBox: z.boolean().default(true), verify: z.boolean().default(false) },
+    "(create_container bunu zaten yapar). folder: /Game/... altında yeni/boş bir klasör seç; kullanıcıdan onay almadan uygulama. " +
+    "sizeBox verilmezse: tam ekran widget'lara (create_main_menu vb.) SizeBox sarılmaz, diğerlerine widget boyutunda sarılır. " +
+    "Uygulamadan sonra dokuları doğrula (tools/run-unreal-plan.mjs bunu kendisi yapar): UE bazen bozuk (siyah) doku içe aktarabiliyor.",
+    { widget: z.string(), folder: z.string().optional(), sizeBox: z.boolean().optional(), verify: z.boolean().default(false) },
     async ({ widget, folder, sizeBox, verify }) => {
       const plan = unrealPlan(getWidget(widget), (id) => assets.get(id), { folder, sizeBox, verify });
       for (const id of Object.keys(plan.textures)) {

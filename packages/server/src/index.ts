@@ -11,6 +11,7 @@ import { registerSceneTools } from "./scene-tools.js";
 import { registerDesignTools } from "./design-tools.js";
 import { registerUnrealTools } from "./unreal-tools.js";
 import { registerComponentTools } from "./component-tools.js";
+import { registerScreenTools } from "./screen-tools.js";
 
 // Proje dosyası: BEDIZ_PROJECT, yoksa çalışma klasöründeki bediz.project.json.
 // shortcut: her değişiklikte tüm dosya yeniden yazılır; büyük projelerde artımlı yazıma geç.
@@ -84,5 +85,6 @@ registerSceneTools(server);
 registerDesignTools(server);
 registerUnrealTools(server);
 registerComponentTools(server);
+registerScreenTools(server);
 
 await server.connect(new StdioServerTransport());

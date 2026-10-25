@@ -15,6 +15,7 @@ const LOOK: Record<ThemeName, { top: string; bottom: string; text: string; fill:
   "ruby-blocks": { top: "#5d1722", bottom: "#2a0a10", text: "#f2d27a", fill: "#c0233a" },
   "emerald-bronze": { top: "#1a4d3d", bottom: "#0b241c", text: "#f0c590", fill: "#2fbf71" },
 };
+export { LOOK as THEME_LOOK };
 const metalOf = (theme: ThemeName, frame?: MaterialPreset): MaterialPreset => frame ?? CONTAINER_THEMES[theme].frame ?? "gold";
 
 export interface ComponentRecipe { theme: ThemeName; designs: Design[]; widget: Widget }
@@ -114,8 +115,8 @@ export function slotRecipe(input: SlotInput): ComponentRecipe & { variants: { no
   const make = (variant: "normal" | "selected") => DesignSchema.parse({ id: `${id}_${variant}`, kind: "frame9", width: size, height: size, slice: { left: m, top: m, right: m, bottom: m }, layers: [
     { id: "outline", kind: "ring", inset: 0, thickness: t + 2, chamfer: 7, fill: { kind: "solid", color: outlineColor } },
     { id: "rim", kind: "ring", inset: 1, thickness: t, chamfer: 6, fill: { kind: "material", preset: metal, seed: 11, wear: variant === "selected" ? 0 : 0.3 },
-      effects: [{ kind: "bevel", depth: 3, size: 3 }, ...(variant === "selected" ? [{ kind: "glow", blur: 5, color: "#ffd27a", opacity: 0.7 }] : [])] },
-    { id: "well", kind: "box", inset: 1 + t, chamfer: 3, fill: { kind: "linear", angle: 90, stops: [[0, variant === "selected" ? "#2a2417" : "#0d1114"], [1, "#1b2227"]] }, effects: [{ kind: "innerShadow", blur: 6, dy: 2, opacity: 0.9 }] },
+      effects: [{ kind: "bevel", depth: 3, size: 3 }, ...(variant === "selected" ? [{ kind: "glow", blur: 6, color: "#ffd27a", opacity: 0.95 }] : [])] },
+    { id: "well", kind: "box", inset: 1 + t, chamfer: 3, fill: { kind: "linear", angle: 90, stops: variant === "selected" ? [[0, "#7a5f22"], [1, "#33280f"]] : [[0, "#0d1114"], [1, "#1b2227"]] }, effects: [{ kind: "innerShadow", blur: 6, dy: 2, opacity: 0.9 }] },
   ] });
   const normal = make("normal"), selected = make("selected");
   const widget = WidgetSchema.parse({ id, width: size, height: size, root: { id: "Root", type: "CanvasPanel", children: [

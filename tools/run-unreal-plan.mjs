@@ -72,4 +72,29 @@ for (const [i, step] of plan.steps.entries()) {
     process.exit(1);
   }
 }
+
+// Doku doğrulaması: UE bazen bozuk (ör. tamamen siyah) doku içe aktarabiliyor ve widget'ta sessizce beyaz/siyah görünüyor.
+// Her dokunun UE'deki önizlemesinin ortalama parlaklığı kaynak PNG ile karşılaştırılır (yalnızca opak kaynaklar; sharp yoksa atlanır).
+let sharp;
+try { sharp = (await import("sharp")).default; } catch { console.log("(sharp yok: doku doğrulaması atlandı)"); }
+const bad = [];
+if (sharp) {
+  const mean = async (input) => { const st = await sharp(input).stats(); return { v: st.channels.slice(0, 3).reduce((a, c) => a + c.mean, 0) / 3, opaque: st.isOpaque }; };
+  for (const st of plan.steps.filter((x) => x.tool === "import_file")) {
+    const path = `${st.arguments.folder_path}/${st.arguments.asset_name}`;
+    try {
+      const src = await mean(st.arguments.source_file);
+      if (!src.opaque) continue; // saydam dokularda önizleme farklı birleştirilir; karşılaştırma güvenilmez
+      const res = await rpc("tools/call", { name: "call_tool", arguments: { toolset_name: "EditorToolset.EditorAppToolset", tool_name: "CaptureAssetImage", arguments: { assetPath: path } } });
+      const out = JSON.parse((res.content ?? []).map((c) => c.text ?? "").join("")).returnValue;
+      const ue = await mean(Buffer.from(out.data, "base64"));
+      if (Math.abs(ue.v - src.v) > Math.max(10, src.v * 0.5)) bad.push(`${path}: UE parlaklığı ${ue.v.toFixed(0)}, kaynak ${src.v.toFixed(0)}`);
+    } catch (e) { console.log(`(doku doğrulanamadı: ${path}: ${e.message.slice(0, 80)})`); }
+  }
+}
+if (bad.length) {
+  console.error("✗ Bozuk görünen doku(lar):\n  " + bad.join("\n  "));
+  console.error("Çözüm: UE'de bu asset'i silip (AssetTools.delete) aynı kaynaktan yeniden içe aktar (import_file + doku ayarları), ya da planı yeni bir klasöre tekrar uygula.");
+  process.exit(3);
+}
 console.log("Tamam.");

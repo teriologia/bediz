@@ -26,6 +26,10 @@ export function layoutWidget(widget: Widget, assetSize: AssetSize, measureText: 
       case "TextBlock": return measureText(n.text ?? "", n.fontSize ?? 16);
       case "Border":
       case "Button": return n.children[0] ? outer(n.children[0]) : { w: 0, h: 0 };
+      case "SizeBox": {
+        const c = n.children[0] ? outer(n.children[0]) : { w: 0, h: 0 };
+        return { w: n.width ?? c.w, h: n.height ?? c.h };
+      }
       case "ProgressBar": {
         if (n.size) return { w: n.size.x, h: n.size.y };
         const s = n.brush && assetSize(n.brush.asset);
@@ -84,6 +88,7 @@ export function layoutWidget(widget: Widget, assetSize: AssetSize, measureText: 
       case "Overlay":
       case "Border":
       case "Button":
+      case "SizeBox":
         for (const c of n.children) arrange(c, place(r, c));
         break;
     }

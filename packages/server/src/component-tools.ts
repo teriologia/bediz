@@ -9,7 +9,7 @@ import { renderWidget } from "./render-scene.js";
 import { assets, designs, notify, widgets } from "./state.js";
 
 /** Tasarımları ve widget'ı kaydeder, PNG'leri dışa aktarır. */
-async function install(r: ComponentRecipe) {
+export async function install(r: ComponentRecipe) {
   for (const d of r.designs) { compileDesign(d); designs.set(d.id, d); }
   const exported = [];
   for (const d of r.designs) exported.push(await exportDesign(d));

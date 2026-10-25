@@ -9,7 +9,7 @@ import {
 } from "@bediz/core";
 import { assets, designs, getDesign, notify, projectDir, widgets } from "./state.js";
 import { renderDesignPng } from "./design-render.js";
-import { renderNineSliceFrom } from "./render.js";
+import { renderNineSliceFrom, tileTo } from "./render.js";
 import { renderWidget } from "./render-scene.js";
 
 const text = (v: unknown) => ({ type: "text" as const, text: JSON.stringify(v, null, 2) });
@@ -171,7 +171,7 @@ export function registerDesignTools(server: McpServer) {
       const out = d.kind === "frame9"
         ? await renderNineSliceFrom(png, { id: d.id, width: d.width, height: d.height, slice: d.slice }, width, height)
         : d.kind === "tile"
-          ? await sharp(base).composite([{ input: png, tile: true }]).png().toBuffer()
+          ? await tileTo(png, width, height)
           : await sharp(base).composite([{ input: png, gravity: "center" }]).png().toBuffer();
       return { content: [image(await flat(out, background))] };
     },

@@ -29,7 +29,7 @@ export interface UnrealPlan {
 }
 export interface PlanOptions {
   folder?: string; // varsayılan /Game/Bediz/<widget>
-  sizeBox?: boolean; // kökü widget boyutunda SizeBox ile sar (varsayılan true; yoksa widget tüm alanı doldurur)
+  sizeBox?: boolean; // kökü widget boyutunda SizeBox ile sar (varsayılan: widget.fullscreen değilse true; yoksa widget tüm alanı doldurur)
   verify?: boolean; // editörde açıp ekran görüntüsü alan isteğe bağlı adımlar ekle
 }
 
@@ -122,7 +122,7 @@ export function unrealPlan(widget: Widget, lookup: (assetId: string) => Asset | 
     arguments: { widgetBlueprint: bp, widgetClass: { refPath: `/Script/UMG.${cls}` }, widgetDisplayName: name, ...(parent ? { parentWidget: ref(parent, "widget") } : {}) },
   });
 
-  const sizeBox = opts.sizeBox ?? true;
+  const sizeBox = opts.sizeBox ?? !widget.fullscreen;
   if (sizeBox) {
     // Widget'ın kendi boyutu yoktur; SizeBox, yerleşim panellerine istenen boyutu bildirir.
     addWidget("SizeBox", "SizeBox");
@@ -142,6 +142,12 @@ export function unrealPlan(widget: Widget, lookup: (assetId: string) => Asset | 
   const styled = (b: Record<string, unknown>) => ({ ...b, tintColor: white });
   const stateBrush = (n: Node, k: "hovered" | "pressed" | "disabled") => (n.states?.[k] ? brushJson(used.get(n.states[k]!.asset)!) : brushOf(n));
   const widgetValues = (n: Node): Record<string, unknown> => {
+    if (n.type === "SizeBox") {
+      return {
+        ...(n.width !== undefined ? { widthOverride: n.width, bOverride_WidthOverride: true } : {}),
+        ...(n.height !== undefined ? { heightOverride: n.height, bOverride_HeightOverride: true } : {}),
+      };
+    }
     if (n.type === "Button") {
       return { widgetStyle: { normal: styled(brushOf(n)), hovered: styled(stateBrush(n, "hovered")), pressed: styled(stateBrush(n, "pressed")), disabled: styled(stateBrush(n, "disabled")) } };
     }

@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { layoutWidget, walk, type Asset, type Node, type Widget } from "@bediz/core";
-import { renderNineSlice } from "./render.js";
+import { renderNineSlice, tileTo } from "./render.js";
 import { measureText, textPathData } from "./text.js";
 
 /** Widget'ı layout'a göre PNG'ye çizer; canvas dışına taşan kısımlar kırpılır. */
@@ -25,9 +25,7 @@ export async function renderWidget(widget: Widget, assets: Map<string, Asset>, b
   const brushImage = async (n: Node, assetId: string, w: number, h: number): Promise<Buffer> => {
     const a = assets.get(assetId);
     if (!a) throw new Error(`${n.id}: asset yok: ${assetId}`);
-    if (a.tile) {
-      return sharp({ create: { width: w, height: h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: a.path, tile: true }]).png().toBuffer();
-    }
+    if (a.tile) return tileTo(a.path, w, h);
     const sl = a.slice;
     return sl && w >= sl.left + sl.right && h >= sl.top + sl.bottom ? renderNineSlice(a, w, h) : sharp(a.path).resize(w, h, { fit: "fill" }).png().toBuffer();
   };
