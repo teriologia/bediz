@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
-import { DesignSchema } from "@bediz/core";
+import { DesignSchema, silhouettePath } from "@bediz/core";
 import { renderDesignPng } from "./design-render.js";
 import { renderNineSlice, tileTo } from "./render.js";
 
@@ -43,6 +43,21 @@ for (const [W, H, mode] of [[121, 60, "x"], [60, 71, "y"], [61, 61, "xy"]] as co
     if (mode !== "y") assert.equal(px(x, y), px(W - 1 - x, y), `${mode}: x yansıması (${x},${y})`);
     if (mode !== "x") assert.equal(px(x, y), px(x, H - 1 - y), `${mode}: y yansıması (${x},${y})`);
   }
+}
+// band: silüet dışı şeffaf, dış çizgi bandı kenarda koyu, yüzey bandı merkezde boyalı; malzemeli bant bevel ile parlar
+{
+  const Wb = 200, Hb = 80, d = silhouettePath("hex", Wb, Hb, 30, 6);
+  const des = DesignSchema.parse({ id: "bd", kind: "sprite", width: Wb, height: Hb, layers: [
+    { id: "o", kind: "band", d, from: 0, to: 3, fill: { kind: "solid", color: "#101010" } },
+    { id: "r", kind: "band", d, from: 2, to: 8, fill: { kind: "material", preset: "gold", seed: 3, wear: 0 }, effects: [{ kind: "bevel", depth: 3, size: 3 }] },
+    { id: "f", kind: "band", d, from: 8, fill: { kind: "solid", color: "#2244aa" } }] });
+  const { data } = await sharp(await renderDesignPng(des)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const px = (x: number, y: number) => [...data.subarray((y * Wb + x) * 4, (y * Wb + x) * 4 + 4)];
+  assert.equal(px(1, 1)[3], 0, "silüet dışı şeffaf");
+  assert.ok(px(100, 40)[2] > 150 && px(100, 40)[0] < 80 && px(100, 40)[3] === 255, "yüzey bandı mavi");
+  const rim = px(100, 6 + 5); // üst kenardan ~5 px: metal bandı
+  assert.ok(rim[0] > rim[2] + 30, `metal bandı altın tonlu olmalı: ${rim}`);
+  assert.ok(px(100, 7)[0] < 60 || px(100, 6)[0] < 60, "en dış bant koyu çizgi");
 }
 assert.throws(() => DesignSchema.parse({ id: "t", kind: "tile", width: 16, height: 16, symmetry: "x", layers: [] }), /symmetry/);
 console.log("render ok");

@@ -67,6 +67,8 @@ export function registerDesignTools(server: McpServer) {
           gem: "cx,cy,size,color + shape(diamond|round|hex) + setting(gold|none): hazır faset mücevher (altın yuvalı).",
           line: "points [[x,y],...], closed?; stroke ZORUNLU (fill kullanma). Açık uçlu çizgi: tel, oyuk, çatlak.",
           cracks: "x,y,w,h bölgesine count adet dallanan çatlak (koyu iz + parlak kenar); length, seed, direction (rad, bir yöne hizalar), spread. Bölgeyi yüzeyin içinde tut (boşluğa taşan çatlak havada kalır).",
+          band: "d (silüet SVG yolu), from, to? (kenara px mesafe aralığı), fill: silüetin kenar mesafesine göre dilimi — eşit kalınlıklı çerçeve katmanları (dış çizgi → metal → boşluk → yüzey) için, her silüette. Yalnız PNG çıktısında; malzeme dolgusu bevel'i bant kenarlarında alır. silhouettePath: rect|notched|hex|arrow|swallow|winged (create_button shape: ile hazır).",
+          motif: "style: chevrons («» oklar) | wings (yukarı-dışa kanat/taç) | crest (tepe süsü) | rune (mühür halkası); cx,cy,size, mirror? (tuval ortasına aynalı kopya); fill/stroke/effects her parçaya uygulanır.",
           rivets: "points [[x,y],...] (sol üst köşeye göre, 4 köşeye aynalanır), size, which?: kubbeli altın perçin. Köşe bölgesinde tut (kenar şeridinde gerilir).",
           corners: "style: blade (keskin boynuz) | scroll (kıvrımlı volüt) | claw (pençe); size (px; slice marjını aşma, yoksa gerilir), inset?, which?:[tl,tr,bl,br], studs? — 4 köşeye süs; fill/stroke/effects her parçaya uygulanır.",
         },

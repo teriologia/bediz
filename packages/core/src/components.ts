@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SILHOUETTES, silhouettePath } from "./shapes.js";
 import { CONTAINER_THEMES, THEME_LOOK, ThemeSchema, lineOf, rampOf, type ThemeName } from "./container.js";
 export { THEME_LOOK };
 import { DesignSchema, shade, type Design } from "./design.js";
@@ -22,6 +23,8 @@ export const ButtonInputSchema = z.object({
   label: z.string().max(60).optional(), width: z.number().int().min(60).max(1024).optional(), height: z.number().int().min(28).max(512).optional(),
   fontSize: z.number().int().min(8).max(96).optional(), rim: z.number().int().min(2).max(16).optional(), chamfer: z.boolean().optional(),
   wear: z.number().min(0).max(1).optional(), textColor: Hex.optional(),
+  shape: z.enum(SILHOUETTES).optional(), // silüet: rect (varsayılan, kutu) | notched | hex | arrow | swallow | winged — uçlar sabit, orta gerilir
+  end: z.number().int().min(8).max(200).optional(), // silüet uç bölgesi (px, varsayılan yükseklik×0.62)
   selected: z.boolean().optional(), // true: ek `<id>_selected` tasarımı üretir (sekme/anahtar için kalıcı seçili görünüm)
   style: z.enum(["metal", "ghost"]).optional(), // metal: kalın bevel'li metal çerçeve (varsayılan); ghost: ince çift çizgi, cam yüzey (sekme/ikincil düğme)
   faceOpacity: z.number().min(0).max(1).optional(), // 1: opak yüzey; düşük: şeffaf/cam buton (zemin görünür)
@@ -38,6 +41,9 @@ export function buttonRecipe(input: ButtonInput): ComponentRecipe & { states: Re
   const { id, theme = "gold-stone", ...o } = ButtonInputSchema.parse(input);
   const look = LOOK[theme], metal = metalOf(theme, o.frame);
   const w = o.width ?? 200, h = o.height ?? 56, t = o.rim ?? 6, wear = o.wear ?? 0.3, chamfer = o.chamfer ?? true;
+  const ghostStyle = o.style === "ghost";
+  const shaped = o.shape && o.shape !== "rect" ? o.shape : undefined;
+  const cap = o.end ?? Math.round(h * 0.62), SM = 8; // silüet: uç bölgesi ve tuval kenar boşluğu (gölge/parıltı)
   const m = t + 8, S = 2 * m + 24;
   // Köşe: pah ya da yuvarlak; iç katmanlarda eşit kalınlık için küçülür.
   const corner = (inset: number) => (chamfer ? { chamfer: Math.max(0, Math.round(9 - (inset - 1) * 0.586)) } : { radius: Math.max(0, 9 - (inset - 1)) });
@@ -46,7 +52,7 @@ export function buttonRecipe(input: ButtonInput): ComponentRecipe & { states: Re
     const hov = state === "hovered", prs = state === "pressed", dis = state === "disabled", sel = state === "selected";
     const top = dis ? "#3a3d41" : prs || sel ? shade(look.top, -0.4) : hov ? shade(look.top, 0.28) : look.top;
     const bottom = dis ? "#1d1f22" : prs || sel ? shade(look.bottom, -0.4) : hov ? shade(look.bottom, 0.2) : look.bottom;
-    if (o.style === "ghost") {
+    if (o.style === "ghost" && !shaped) {
       // İnce çizgi dili: tek piksel çizgiler, cam yüzey; hover'da çizgi parlar ve altın parıltı eklenir, pressed'de yüzey koyulaşır.
       const lw = o.rim ?? 2, line = dis ? "#7a7f85" : sel ? "#e0b860" : look.text, lo = dis ? 0.35 : prs ? 0.7 : hov || sel ? 1 : 0.6;
       return DesignSchema.parse({ id: `${id}_${state}`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: [
@@ -56,6 +62,22 @@ export function buttonRecipe(input: ButtonInput): ComponentRecipe & { states: Re
       ] });
     }
     const rimFill = { kind: "material" as const, preset: dis ? ("silver" as const) : metal, ...(dis ? {} : rampOf(theme)), seed: 7, wear: hov || sel ? 0 : wear };
+    if (shaped) {
+      // Silüetli buton: bant katmanları kenar mesafesine göre dilimlenir (dış çizgi, metal, boşluk, yüzey); canvas yüksekliği = buton yüksekliği, uçlar sabit.
+      const CW = 2 * (SM + cap) + 40, CH = h, d = silhouettePath(shaped, CW, CH, cap, SM), sl = SM + cap, sv = Math.max(1, Math.floor(CH / 2) - 2);
+      const slice = { left: sl, top: sv, right: sl, bottom: sv };
+      const rim = ghostStyle ? [] : [
+        { id: "rim", kind: "band", d, from: 1.2, to: 1.2 + t, fill: rimFill, effects: [{ kind: "bevel", depth: 3, size: Math.max(2, Math.min(12, t - 1)) }, ...(hov || sel ? [{ kind: "glow", blur: 4, color: "#ffd27a", opacity: sel ? 0.8 : 0.5 }] : [])] },
+        ...(prs || dis ? [{ id: "rim_dim", kind: "band", d, from: 1.2, to: 1.2 + t, fill: { kind: "solid", color: "#000000", opacity: dis ? 0.5 : 0.3 } }] : []),
+        { id: "gap", kind: "band", d, from: 1.2 + t, to: 3.2 + t, fill: { kind: "solid", color: "#0a0705", opacity: 0.9 } },
+      ];
+      const face = ghostStyle
+        ? [{ id: "face", kind: "band", d, from: 0, opacity: sel ? 0.92 : o.faceOpacity ?? (hov ? 0.55 : 0.32), fill: { kind: "linear", angle: 90, stops: [[0, sel ? "#3a2e14" : hov ? look.top : "#0c0e11"], [1, sel ? "#150f05" : prs ? "#050607" : hov ? look.bottom : "#07080a"]] } },
+          { id: "line", kind: "band", d, from: 0, to: sel ? 3 : 2, opacity: dis ? 0.35 : prs ? 0.7 : hov || sel ? 1 : 0.6, fill: { kind: "solid", color: dis ? "#7a7f85" : sel ? "#e0b860" : lineOf(theme, o.frame) }, effects: hov ? [{ kind: "glow", blur: 3, color: "#ffd27a", opacity: 0.55 }] : [] }]
+        : [{ id: "face", kind: "band", d, from: 3.2 + t, opacity: o.faceOpacity, fill: { kind: "linear", angle: 90, stops: [[0, top], [1, bottom]] }, effects: [{ kind: "innerShadow", blur: prs ? 5 : 3, dy: prs ? 3 : 1, opacity: prs ? 0.9 : 0.6 }] }];
+      const outlineBand = ghostStyle ? [] : [{ id: "outline", kind: "band", d, from: 0, to: 2.6, fill: { kind: "solid", color: outlineColor } }];
+      return DesignSchema.parse({ id: `${id}_${state}`, kind: "frame9", width: CW, height: CH, slice, layers: [...outlineBand, ...rim, ...face] });
+    }
     return DesignSchema.parse({ id: `${id}_${state}`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: [
       { id: "outline", kind: "ring", inset: 0, thickness: t + 3, ...corner(0), fill: { kind: "solid", color: outlineColor } },
       { id: "rim", kind: "ring", inset: 1, thickness: t, ...corner(1), fill: rimFill,

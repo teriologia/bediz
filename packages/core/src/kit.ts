@@ -2,6 +2,7 @@ import { z } from "zod";
 import { barRecipe, buttonRecipe, metalOf, slotRecipe, type ComponentRecipe } from "./components.js";
 import { THEME_LOOK, ThemeSchema, containerRecipe, lineOf, rampOf } from "./container.js";
 import { DesignSchema, shade, type Design } from "./design.js";
+import { SILHOUETTES } from "./shapes.js";
 import { dropdownRecipe, inputRecipe, scrollbarRecipe, tooltipRecipe } from "./fields.js";
 import { MATERIAL_PRESETS } from "./material.js";
 import { WidgetSchema, type Node } from "./scene.js";
@@ -69,7 +70,7 @@ export function sliderRecipe(input: SliderInput): ComponentRecipe & { thumb: str
 
 // ---------------------------------------------------------------- SEKME GRUBU
 export const TabsInputSchema = z.object({
-  ...common, labels: z.array(z.string().min(1).max(30)).min(2).max(8), selected: z.number().int().min(0).optional(),
+  ...common, shape: z.enum(SILHOUETTES).optional(), labels: z.array(z.string().min(1).max(30)).min(2).max(8), selected: z.number().int().min(0).optional(),
   tabWidth: z.number().int().min(60).max(400).optional(), tabHeight: z.number().int().min(28).max(100).optional(), fontSize: z.number().int().min(8).max(48).optional(), gap: z.number().int().min(0).max(40).optional(),
 }).strict();
 export type TabsInput = z.infer<typeof TabsInputSchema>;
@@ -78,8 +79,9 @@ export type TabsInput = z.infer<typeof TabsInputSchema>;
 export function tabsRecipe(input: TabsInput): ComponentRecipe & { tab: ReturnType<typeof buttonRecipe>["states"] & { selected: string } } {
   const { id, theme = "gold-stone", labels, selected = 0, ...o } = TabsInputSchema.parse(input);
   if (selected >= labels.length) throw new Error(`selected (${selected}) sekme sayısından (${labels.length}) küçük olmalı`);
-  const tw = o.tabWidth ?? 170, th = o.tabHeight ?? 42, gap = o.gap ?? 14;
-  const b = buttonRecipe({ id: `${id}_tab`, theme, frame: o.frame, style: o.style ?? "ghost", width: tw, height: th, fontSize: o.fontSize ?? 18, selected: true });
+  const tw = o.tabWidth ?? (o.shape && o.shape !== "rect" ? 220 : 170), // silüetli uçlar iç alanı daraltır
+     th = o.tabHeight ?? 42, gap = o.gap ?? 14;
+  const b = buttonRecipe({ id: `${id}_tab`, theme, frame: o.frame, style: o.style ?? "ghost", shape: o.shape, width: tw, height: th, fontSize: o.fontSize ?? 18, selected: true });
   const text = THEME_LOOK[theme].text;
   const cell = (label: string, i: number): Node => {
     const on = i === selected, s = b.states;
@@ -96,18 +98,18 @@ export function tabsRecipe(input: TabsInput): ComponentRecipe & { tab: ReturnTyp
 }
 
 // ---------------------------------------------------------------- UI KİTİ
-export const UiKitInputSchema = z.object({ id: Id, theme: ThemeSchema.optional(), frame: z.enum(MATERIAL_PRESETS).optional(), style: z.enum(["metal", "ghost"]).optional() }).strict();
+export const UiKitInputSchema = z.object({ id: Id, theme: ThemeSchema.optional(), frame: z.enum(MATERIAL_PRESETS).optional(), style: z.enum(["metal", "ghost"]).optional(), shape: z.enum(SILHOUETTES).optional() }).strict(); // shape: düğme ve sekmelerin silüeti
 export type UiKitInput = z.infer<typeof UiKitInputSchema>;
 
 /** Bir temadan tutarlı bileşen seti: panel, düğme, sekmeler, çubuk, slot, toggle, kaydırıcı, metin girişi, açılır liste, kaydırma çubuğu, tooltip. Hepsi aynı tema/stil/metal ile üretilir. */
 export function uiKitRecipe(input: UiKitInput) {
   const { id, theme = "gold-stone", ...o } = UiKitInputSchema.parse(input);
-  const base = { theme, frame: o.frame, style: o.style } as const;
+  const base = { theme, frame: o.frame, style: o.style } as const, sh = { shape: o.shape } as const;
   const panel = containerRecipe({ id: `${id}_panel`, theme, frame: o.frame, style: o.style, width: 420, height: 240 });
   const components: Record<string, ComponentRecipe> = {
     panel: { theme, designs: [panel.bg, panel.frame, ...(panel.shade ? [panel.shade] : []), ...(panel.gem ? [panel.gem] : [])], widget: panel.widget },
-    button: buttonRecipe({ id: `${id}_button`, label: "BAŞLA", width: 190, height: 48, ...base }),
-    tabs: tabsRecipe({ id: `${id}_tabs`, labels: ["HARİTALAR", "BOSSLAR", "ENDLESS"], ...base }),
+    button: buttonRecipe({ id: `${id}_button`, label: "BAŞLA", width: 190, height: 48, ...base, ...sh }),
+    tabs: tabsRecipe({ id: `${id}_tabs`, labels: ["HARİTALAR", "BOSSLAR", "ENDLESS"], ...base, ...sh }),
     bar: barRecipe({ id: `${id}_bar`, width: 240, height: 24, percent: 0.65, ...base }),
     slot: slotRecipe({ id: `${id}_slot`, size: 72, ...base }),
     toggle: toggleRecipe({ id: `${id}_toggle`, ...base }),

@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import {
-  compileDesign, expandLayers, makeSeamless, shadeMaterial, withInnerShadow, withShadow,
+  compileDesign, edgeDistance, expandLayers, makeSeamless, shadeMaterial, withInnerShadow, withShadow,
   type Design, type Shape,
 } from "@bediz/core";
 
@@ -35,6 +35,38 @@ async function materialLayer(d: Design, l: MaterialShape): Promise<sharp.Overlay
   return parts;
 }
 
+type BandShape = Extract<Shape, { kind: "band" }>;
+
+/**
+ * Bant katmanı: silüet yolunun maskesi → Öklid kenar mesafesi → [from, to] px aralığı (yarım piksel yumuşatmalı) bant maskesi.
+ * Dolgu malzemeyse bant maskesiyle CPU'da boyanır (bevel ve fırça bant kenarlarını izler); değilse dolgu SVG'de tuvale çizilip alfası bantla çarpılır.
+ * Ardından CPU efektleri (gölge, iç gölge, parıltı). Bant dışında bevel yalnız malzeme dolgusunda çalışır.
+ */
+async function bandLayer(d: Design, l: BandShape): Promise<sharp.OverlayOptions[]> {
+  if (!l.fill) throw new Error(`band ${l.id}: fill gerekli`);
+  const { width: w, height: h } = d, clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+  const sil = await sharp(svgOf(d, { id: "s", kind: "path", d: l.d, fill: { kind: "solid", color: "#ffffff" } } as Shape)).ensureAlpha().raw().toBuffer();
+  const sm = Float32Array.from({ length: w * h }, (_, i) => sil[i * 4 + 3] / 255), dist = edgeDistance(sm, w, h);
+  const mask = Float32Array.from(sm, (a, i) => (a === 0 ? 0 : a * clamp01(dist[i] - l.from + 0.5) * (l.to === undefined ? 1 : clamp01(l.to - dist[i] + 0.5))));
+
+  const effects = l.effects ?? [], bevel = effects.find((e) => e.kind === "bevel");
+  let rgba: Uint8Array;
+  if (l.fill.kind === "material") {
+    rgba = shadeMaterial({ w, h, mask, fill: l.fill, tileable: false, bevel: bevel?.kind === "bevel" ? { depth: bevel.depth ?? 4, size: bevel.size, azimuth: bevel.azimuth } : undefined });
+  } else {
+    const paint = await sharp(svgOf(d, { id: "p", kind: "box", inset: 0, fill: l.fill } as Shape)).ensureAlpha().raw().toBuffer();
+    rgba = new Uint8Array(paint);
+    for (let i = 0; i < w * h; i++) rgba[i * 4 + 3] = Math.round(paint[i * 4 + 3] * mask[i]);
+  }
+  for (const e of effects) {
+    if (e.kind === "innerShadow") rgba = withInnerShadow(rgba, w, h, e);
+    else if (e.kind === "shadow") rgba = withShadow(rgba, w, h, e);
+    else if (e.kind === "glow") rgba = withShadow(rgba, w, h, { dx: 0, dy: 0, blur: e.blur ?? 6, color: e.color ?? "#ffd27a", opacity: e.opacity ?? 0.8 });
+  }
+  if (l.opacity !== undefined) for (let i = 3; i < rgba.length; i += 4) rgba[i] = Math.round(rgba[i] * l.opacity);
+  return [{ input: await rawPng(rgba, w, h) }];
+}
+
 /** Sol/üst yarıyı aynalayıp karşı yarının yerine koyar (tek sayıda piksel varsa orta sütun/satır yarıyla gelir, çakışma olmaz). */
 async function mirrorHalves(png: Buffer, w: number, h: number, mode: "x" | "y" | "xy"): Promise<Buffer> {
   const half = async (src: Buffer, horizontal: boolean) => {
@@ -58,7 +90,7 @@ async function mirrorHalves(png: Buffer, w: number, h: number, mode: "x" | "y" |
 export async function renderDesignPng(d: Design, background?: string): Promise<Buffer> {
   const parts: sharp.OverlayOptions[] = [];
   for (const l of expandLayers(d)) {
-    const layerParts = isMaterial(l) ? await materialLayer(d, l) : [{ input: await sharp(svgOf(d, l)).png().toBuffer() }];
+    const layerParts = l.kind === "band" ? await bandLayer(d, l) : isMaterial(l) ? await materialLayer(d, l) : [{ input: await sharp(svgOf(d, l)).png().toBuffer() }];
     parts.push(...layerParts.map((p) => (l.blend ? { ...p, blend: l.blend } : p)));
   }
   let img = sharp({ create: { width: d.width, height: d.height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite(parts);

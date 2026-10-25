@@ -12,3 +12,4 @@ export * from "./components.js";
 export * from "./screens.js";
 export * from "./kit.js";
 export * from "./fields.js";
+export * from "./shapes.js";

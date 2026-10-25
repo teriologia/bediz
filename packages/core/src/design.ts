@@ -13,6 +13,7 @@ export type TexturePreset = (typeof TEXTURE_PRESETS)[number];
 
 /** Doku dolgusu: şeklin içine procedural doku basar. Tile tasarımlarda dikişsiz (stitch) çalışır. */
 // SVG özniteliğine yazıldığı için kümeyi kısıtlı tutar (enjeksiyon yok); komut/argüman sayısı doğrulanmaz: bozuk yol çizimde boş kalır.
+export const MOTIFS = ["chevrons", "wings", "crest", "rune"] as const;
 const PATH_CHARS = /^[MmLlHhVvCcSsQqTtAaZz0-9eE+\-.,\s]+$/;
 
 const TextureFill = z.object({
@@ -81,6 +82,12 @@ export const LayerSchema = z.discriminatedUnion("kind", [
   z.object({ ...common, kind: z.literal("ring"), ...boxGeo, thickness: num.positive() }).strict(),
   // smooth: 0..1 — köşeleri Catmull-Rom→Bézier ile yuvarlar (1 = tam yumuşak); corners: yumuşatılmayacak (keskin) köşe indeksleri.
   z.object({ ...common, kind: z.literal("polygon"), points: z.array(z.tuple([num, num])).min(3), smooth: z.number().min(0).max(1).optional(), corners: z.array(z.number().int().min(0)).optional() }).strict(),
+  // Motif: hazır süs (chevrons «» oklar, wings kanat, crest tepe süsü, rune mühür halkası). (cx,cy) merkez, size yükseklik px;
+  // mirror: tuval ortasına göre karşı tarafa aynalı kopya (kanat/ok çifti). fill/stroke/effects her parçaya uygulanır.
+  z.object({ ...common, kind: z.literal("motif"), style: z.enum(MOTIFS), cx: num, cy: num, size: num.positive(), mirror: z.boolean().optional() }).strict(),
+  // Bant: silüet yolunun (d) kenar mesafesine göre dilimi — from..to px aralığındaki bölge (to yoksa merkeze kadar). Eşit kalınlıklı çerçeve katmanları için;
+  // yalnız PNG hattında çizilir (SVG derleyici yok sayar). Malzeme dolgusunda bevel bant kenarlarını izler.
+  z.object({ ...common, kind: z.literal("band"), d: z.string().min(2).max(4000).regex(PATH_CHARS).regex(/^\s*[Mm]/), from: num.min(0), to: num.positive().optional() }).strict(),
   // Yol: SVG path verisi (M L H V C S Q T A Z, mutlak/göreli). Gerçek Bézier/yay eğrileri; kapalı alan dolgulanır, istenirse stroke.
   z.object({ ...common, kind: z.literal("path"), d: z.string().min(2).max(4000).regex(PATH_CHARS, "d yalnızca SVG yol komutları, sayı ve ayraç içerebilir").regex(/^\s*[Mm]/, "d bir M komutuyla başlamalı"), evenodd: z.boolean().optional() }).strict(),
   z.object({ ...common, kind: z.literal("ellipse"), cx: num, cy: num, rx: num.positive(), ry: num.positive() }).strict(),
@@ -225,7 +232,7 @@ function boxPath(x: number, y: number, w: number, h: number, r = 0, c = 0): stri
   return `M${fmt(x + r)},${fmt(y)} H${fmt(x + w - r)} ${a} ${fmt(x + w)},${fmt(y + r)} V${fmt(y + h - r)} ${a} ${fmt(x + w - r)},${fmt(y + h)} H${fmt(x + r)} ${a} ${fmt(x)},${fmt(y + h - r)} V${fmt(y + r)} ${a} ${fmt(x + r)},${fmt(y)} Z`;
 }
 
-export type Shape = Exclude<Layer, { kind: "gem" | "corners" | "cracks" | "rivets" }>;
+export type Shape = Exclude<Layer, { kind: "gem" | "corners" | "cracks" | "rivets" | "motif" }>;
 
 /** Kapalı çokgeni Catmull-Rom → kübik Bézier'e çevirir; tension 0..1, `sharp` köşelerde teğet sıfırlanır (köşe korunur). */
 function smoothPath(P: [number, number][], tension: number, sharp: Set<number>): string {
@@ -248,6 +255,7 @@ function geometry(l: Shape, W: number, H: number): { d: string; evenodd: boolean
       return { d: `M${l.points.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(" L")}${l.closed ? " Z" : ""}`, evenodd: false };
     case "polygon": return { d: l.smooth ? smoothPath(l.points, l.smooth, new Set(l.corners)) : `M${l.points.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(" L")} Z`, evenodd: false };
     case "path": return { d: l.d, evenodd: !!l.evenodd };
+    case "band": return { d: l.d, evenodd: false };
     case "ellipse": return { d: `M${fmt(l.cx - l.rx)},${fmt(l.cy)} A${fmt(l.rx)},${fmt(l.ry)} 0 1 0 ${fmt(l.cx + l.rx)},${fmt(l.cy)} A${fmt(l.rx)},${fmt(l.ry)} 0 1 0 ${fmt(l.cx - l.rx)},${fmt(l.cy)} Z`, evenodd: false };
     case "box":
     case "ring": {
@@ -298,6 +306,46 @@ function expandGem(g: Extract<Layer, { kind: "gem" }>): Layer[] {
   out.push({ id: `${id}__bounce`, kind: "ellipse", cx: cx + r * 0.3, cy: cy + r * 0.36, rx: r * 0.2, ry: r * 0.09, fill: { kind: "solid", color: light, opacity: 0.35 } });
   out.push({ id: `${id}__glint`, kind: "ellipse", cx: cx - r * 0.28, cy: cy - r * 0.32, rx: r * 0.22, ry: r * 0.12, fill: { kind: "solid", color: hi, opacity: 0.75 } });
   return out.map((l) => ({ ...l, opacity: g.opacity, hidden: g.hidden }) as Layer);
+}
+
+// ---------- motifler ----------
+/** Birim şekiller (merkez 0,0; yükseklik ≈ 100): çokgen parçalar ya da yol (delikli) — expandMotif ölçekler, konumlar, aynalar. */
+function motifParts(style: (typeof MOTIFS)[number]): { name: string; pts?: Pt[]; d?: (k: number, cx: number, cy: number) => string; evenodd?: boolean }[] {
+  switch (style) {
+    case "chevrons": {
+      const one = (x: number): Pt[] => [[x - 22, -40], [x + 4, -40], [x + 34, 0], [x + 4, 40], [x - 22, 40], [x + 8, 0]];
+      return [{ name: "a", pts: one(-14) }, { name: "b", pts: one(18) }];
+    }
+    case "wings": {
+      // sağ kanat: kökten yukarı-dışa yelpaze gibi açılan 3 sivrilen kıvrık bıçak (sol kanat mirror ile)
+      return [[-76, 86], [-52, 108], [-26, 96]].map(([deg, L], i) => {
+        const a = (deg * Math.PI) / 180, tip: Pt = [L * Math.cos(a), L * Math.sin(a)];
+        return { name: `blade${i}`, pts: ribbon([[0, 0], ...cubic([0, 0], [tip[0] * 0.35, tip[1] * 0.1], [tip[0] * 0.75, tip[1] * 0.55], tip, 14)], 30 - i * 4, 2) };
+      });
+    }
+    case "crest": return [
+      { name: "gem", pts: [[0, -34], [15, 0], [0, 34], [-15, 0]] },
+      { name: "spikeL", pts: [[-15, -6], [-52, 0], [-15, 6]] }, { name: "spikeR", pts: [[15, -6], [52, 0], [15, 6]] },
+      { name: "cap", pts: [[0, -50], [7, -38], [0, -34], [-7, -38]] },
+    ];
+    case "rune": return [
+      { name: "ring", evenodd: true, d: (k, cx, cy) => { const o = 40 * k, i = 30 * k, c = (r: number) => `M${f2(cx - r)},${f2(cy)} A${f2(r)},${f2(r)} 0 1 0 ${f2(cx + r)},${f2(cy)} A${f2(r)},${f2(r)} 0 1 0 ${f2(cx - r)},${f2(cy)} Z`; return `${c(o)} ${c(i)}`; } },
+      { name: "diamond", pts: [[0, -22], [14, 0], [0, 22], [-14, 0]] }, { name: "tick1", pts: [[-3, -52], [3, -52], [0, -42]] }, { name: "tick2", pts: [[-3, 52], [3, 52], [0, 42]] },
+    ];
+  }
+}
+
+function expandMotif(m: Extract<Layer, { kind: "motif" }>, W: number): Layer[] {
+  const k = m.size / 100, out: Layer[] = [];
+  const base = { fill: m.fill, stroke: m.stroke, effects: m.effects, opacity: m.opacity, blend: m.blend };
+  for (const p of motifParts(m.style)) {
+    for (const mir of m.mirror ? [false, true] : [false]) {
+      const id = `${m.id}__${p.name}${mir ? "_m" : ""}`;
+      if (p.d) out.push({ id, kind: "path", d: p.d(k, mir ? W - m.cx : m.cx, m.cy), evenodd: p.evenodd, ...base } as Layer);
+      else out.push({ id, kind: "polygon", points: p.pts!.map(([x, y]) => [mir ? W - (m.cx + x * k) : m.cx + x * k, m.cy + y * k] as Pt), ...base } as Layer);
+    }
+  }
+  return out;
 }
 
 // ---------- köşe süsü ----------
@@ -403,8 +451,8 @@ export function expandLayers(d: Design): Shape[] {
   const out: Shape[] = [];
   for (const l of d.layers) {
     if (l.hidden) continue;
-    const subs: Layer[] = l.kind === "gem" ? expandGem(l) : l.kind === "corners" ? expandCorners(l, d.width, d.height) : l.kind === "cracks" ? expandCracks(l) : l.kind === "rivets" ? expandRivets(l, d.width, d.height) : [l];
-    for (const s of subs) if (!s.hidden && s.kind !== "gem" && s.kind !== "corners" && s.kind !== "cracks" && s.kind !== "rivets") out.push(s);
+    const subs: Layer[] = l.kind === "gem" ? expandGem(l) : l.kind === "corners" ? expandCorners(l, d.width, d.height) : l.kind === "cracks" ? expandCracks(l) : l.kind === "rivets" ? expandRivets(l, d.width, d.height) : l.kind === "motif" ? expandMotif(l, d.width) : [l];
+    for (const s of subs) if (!s.hidden && s.kind !== "gem" && s.kind !== "corners" && s.kind !== "cracks" && s.kind !== "rivets" && s.kind !== "motif") out.push(s);
   }
   return out;
 }
@@ -415,6 +463,7 @@ export function compileDesign(d: Design): string {
   const defs: string[] = [], body: string[] = [];
 
   const emit = (l: Shape) => {
+    if (l.kind === "band") return; // bant katmanları yalnız PNG hattında (CPU mesafe alanı) çizilir
     const { d: path, evenodd } = geometry(l, W, H);
     let fill = "none";
     const f = l.fill;
