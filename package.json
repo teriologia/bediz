@@ -1,0 +1,10 @@
+{
+  "name": "bediz",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "tsc -b packages/core packages/server",
+    "test": "npm test -w @bediz/core"
+  },
+  "devDependencies": { "typescript": "^5.6.0", "@types/node": "^22.0.0" }
+}
