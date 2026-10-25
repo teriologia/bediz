@@ -38,10 +38,10 @@ const ref = (name: string, part: "widget" | "slot"): PlanRef => ({ $ref: `${name
 const ueName = (s: string) => s.replace(/[^A-Za-z0-9_]/g, "_");
 const zero = { left: 0, top: 0, right: 0, bottom: 0 };
 
-/** #RRGGBB (sRGB) → UE FLinearColor. */
+/** #RRGGBB[AA] (sRGB; alfa doğrusal değil, olduğu gibi) → UE FLinearColor. */
 function linear(hex: string) {
   const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
-  return { r: +c[0].toFixed(5), g: +c[1].toFixed(5), b: +c[2].toFixed(5), a: 1 };
+  return { r: +c[0].toFixed(5), g: +c[1].toFixed(5), b: +c[2].toFixed(5), a: hex.length > 7 ? +(parseInt(hex.slice(7, 9), 16) / 255).toFixed(4) : 1 };
 }
 
 function slotValues(parent: NodeType | "SizeBox", slot: Slot | undefined): Record<string, unknown> {
@@ -161,7 +161,8 @@ export function unrealPlan(widget: Widget, lookup: (assetId: string) => Asset | 
     }
     if (n.type === "Image") return { brush: { ...brushOf(n), ...(n.size ? { imageSize: { x: n.size.x, y: n.size.y } } : {}) } };
     if (n.type === "Border") return { background: brushOf(n) };
-    if (n.type === "TextBlock") return { text: n.text ?? "", font: { size: n.fontSize ?? 16, ...fontObject(n) }, colorAndOpacity: { specifiedColor: linear(n.color ?? "#ffffff"), colorUseRule: "UseColor_Specified" } };
+    if (n.type === "TextBlock") return { text: n.text ?? "", font: { size: n.fontSize ?? 16, ...fontObject(n), ...(n.letterSpacing ? { letterSpacing: n.letterSpacing } : {}), ...(n.outline ? { outlineSettings: { outlineSize: n.outline.size, outlineColor: linear(n.outline.color) } } : {}) },
+        ...(n.shadow ? { shadowOffset: { x: n.shadow.x, y: n.shadow.y }, shadowColorAndOpacity: linear(n.shadow.color) } : {}), colorAndOpacity: { specifiedColor: linear(n.color ?? "#ffffff"), colorUseRule: "UseColor_Specified" } };
     return {};
   };
 

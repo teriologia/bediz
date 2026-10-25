@@ -29,4 +29,7 @@ assert.notEqual(measureText("Hello", 20, "light").w, a.w);
 assert.ok(measureText("Ğş", 20, "light").w > 0);
 assert.notEqual(textPathData("Ana", 0, 0, 30, "light"), textPathData("Ana", 0, 0, 30));
 assert.throws(() => measureText("x", 20, "yok"), /kayıtlı değil/);
+// harf aralığı: her harfe size×spacing/1000×96/72 px eklenir
+const sp = measureText("Hello", 30, undefined, 200);
+assert.ok(Math.abs(sp.w - measureText("Hello", 30).w - 5 * 0.2 * 30 * (96 / 72)) <= 2);
 console.log("text ok");

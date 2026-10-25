@@ -40,14 +40,14 @@ function pick(ch: string, id?: string): { font: Font; glyph: Glyph } {
 }
 
 /** Karakter karakter yerleşim: ilerleme + aynı font içindeki ikili kerning. */
-function layout(text: string, size: number, id?: string): { glyph: Glyph; font: Font; x: number }[] {
+function layout(text: string, size: number, id?: string, spacing = 0): { glyph: Glyph; font: Font; x: number }[] {
   const px = size * UE_SIZE_TO_PX, out: { glyph: Glyph; font: Font; x: number }[] = [];
   let x = 0, prev: { glyph: Glyph; font: Font } | undefined;
   for (const ch of text) {
     const cur = pick(ch, id);
     if (prev && prev.font === cur.font) x += (cur.font.getKerningValue(prev.glyph, cur.glyph) * px) / cur.font.unitsPerEm;
     out.push({ ...cur, x });
-    x += ((cur.glyph.advanceWidth ?? 0) * px) / cur.font.unitsPerEm;
+    x += ((cur.glyph.advanceWidth ?? 0) * px) / cur.font.unitsPerEm + (spacing * px) / 1000;
     prev = cur;
   }
   out.push({ glyph: undefined as never, font: undefined as never, x }); // son eleman: toplam genişlik
@@ -60,13 +60,13 @@ export function textMetrics(size: number, id?: string) {
 }
 
 /** Metnin piksel genişliği ve satır yüksekliği (tek satır). */
-export function measureText(text: string, size: number, id?: string): { w: number; h: number } {
-  const l = layout(text, size, id);
+export function measureText(text: string, size: number, id?: string, spacing?: number): { w: number; h: number } {
+  const l = layout(text, size, id, spacing);
   return { w: Math.ceil(l[l.length - 1].x), h: Math.ceil(textMetrics(size, id).lineHeight) };
 }
 
 /** Metni, sol üstü (x, y) olacak şekilde SVG yol verisine (path d) çevirir. */
-export function textPathData(text: string, x: number, y: number, size: number, id?: string): string {
+export function textPathData(text: string, x: number, y: number, size: number, id?: string, spacing?: number): string {
   const base = y + textMetrics(size, id).ascent, px = size * UE_SIZE_TO_PX;
-  return layout(text, size, id).slice(0, -1).map((g) => g.glyph.getPath(x + g.x, base, px).toPathData(2)).join("");
+  return layout(text, size, id, spacing).slice(0, -1).map((g) => g.glyph.getPath(x + g.x, base, px).toPathData(2)).join("");
 }

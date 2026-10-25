@@ -45,6 +45,9 @@ export const nodePropShape = {
   height: z.number().positive().optional(), // SizeBox: yükseklik (yoksa içeriğinki)
   text: z.string().optional(), // TextBlock
   fontSize: z.number().positive().optional(),
+  letterSpacing: z.number().min(-200).max(1000).optional(), // TextBlock: harf aralığı, UE birimi (1/1000 em)
+  shadow: z.object({ x: z.number(), y: z.number(), color: z.string().regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/) }).strict().optional(), // TextBlock gölgesi: piksel kayması + renk
+  outline: z.object({ size: z.number().positive().max(16), color: z.string().regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/) }).strict().optional(), // TextBlock kontur
   font: z.string().optional(), // TextBlock: register_font ile kaydedilmiş font kimliği (yoksa Roboto Bold)
   color: z.string().regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/, "renk #RRGGBB veya #RRGGBBAA olmalı").optional(),
 };
@@ -65,6 +68,9 @@ export interface Node {
   text?: string;
   fontSize?: number;
   font?: string;
+  letterSpacing?: number;
+  shadow?: { x: number; y: number; color: string };
+  outline?: { size: number; color: string };
   color?: string;
   children: Node[];
 }
@@ -115,5 +121,5 @@ export function assertPropsFit(type: NodeType, p: Partial<Node>) {
   if ((p.fill || p.percent !== undefined || p.inset !== undefined) && type !== "ProgressBar") bad("fill/percent/inset", "ProgressBar");
   if (p.size && type !== "Image" && type !== "ProgressBar") bad("size", "Image/ProgressBar");
   if ((p.width !== undefined || p.height !== undefined) && type !== "SizeBox") bad("width/height", "SizeBox");
-  if ((p.text !== undefined || p.fontSize || p.color || p.font) && type !== "TextBlock") bad("text/fontSize/font/color", "TextBlock");
+  if ((p.text !== undefined || p.fontSize || p.color || p.font || p.letterSpacing !== undefined || p.shadow || p.outline) && type !== "TextBlock") bad("text/fontSize/font/letterSpacing/shadow/outline/color", "TextBlock");
 }

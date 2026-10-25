@@ -44,9 +44,13 @@ export async function renderWidget(widget: Widget, assets: Map<string, Asset>, b
     } else if (n.type === "TextBlock" && n.text) {
       const fs = n.fontSize ?? 16;
       // Yazı vektör yola çevrilir (Roboto Bold, UE'nin varsayılanı) ve rect'ine kırpılmaz (UMG gibi taşabilir); sadece canvas sınırında kırpılır.
-      const tw = Math.max(w, measureText(n.text, fs, n.font).w + 2);
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="${h}"><path d="${textPathData(n.text, 0, 0, fs, n.font)}" fill="${n.color ?? "#ffffff"}"/></svg>`;
-      await clipped(await sharp(Buffer.from(svg)).png().toBuffer(), x, y, tw, h);
+      const d = textPathData(n.text, 0, 0, fs, n.font, n.letterSpacing), sh = n.shadow, ol = n.outline;
+      const pad = Math.ceil(Math.max(Math.abs(sh?.x ?? 0), Math.abs(sh?.y ?? 0), ol?.size ?? 0));
+      const tw = Math.max(w, measureText(n.text, fs, n.font, n.letterSpacing).w + 2 + pad);
+      const col = (hex: string) => `fill="${hex.slice(0, 7)}"${hex.length > 7 ? ` fill-opacity="${(parseInt(hex.slice(7), 16) / 255).toFixed(3)}"` : ""}`;
+      // Sıra UE gibi: gölge, kontur, dolgu.
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="${h + pad}">${sh ? `<path transform="translate(${sh.x} ${sh.y})" d="${d}" ${col(sh.color)}/>` : ""}${ol ? `<path d="${d}" ${col(ol.color)} stroke="${ol.color.slice(0, 7)}" stroke-width="${ol.size * 2}" stroke-linejoin="round"/>` : ""}<path d="${d}" fill="${n.color ?? "#ffffff"}"/></svg>`;
+      await clipped(await sharp(Buffer.from(svg)).png().toBuffer(), x, y, tw, h + pad);
     }
   };
 

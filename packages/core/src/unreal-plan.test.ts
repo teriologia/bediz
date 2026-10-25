@@ -115,4 +115,11 @@ const fw = WidgetSchema.parse({ id: "ft", width: 100, height: 40, root: { id: "R
 assert.throws(() => unrealPlan(fw, () => undefined), /UE Font asset yolu yok/);
 const fp = unrealPlan(fw, () => undefined, { fonts: () => "/Game/UI/Fonts/Cinzel_Font" });
 assert.match(fp.steps.map((s) => String(s.arguments.values ?? "")).join(), /"fontObject":"\/Game\/UI\/Fonts\/Cinzel_Font\.Cinzel_Font"/);
+// yazı efektleri: harf aralığı, kontur, gölge (#RRGGBBAA alfa korunur)
+const ew = WidgetSchema.parse({ id: "fx", width: 100, height: 40, root: { id: "R", type: "CanvasPanel", children: [{ id: "T", type: "TextBlock", text: "x", letterSpacing: 120, outline: { size: 2, color: "#000000" }, shadow: { x: 2, y: 3, color: "#00000080" }, children: [] }] } });
+const ev = JSON.parse(String(unrealPlan(ew, () => undefined).steps.find((s) => String(s.arguments.values ?? "").includes('"letterSpacing"'))!.arguments.values));
+assert.equal(ev.font.letterSpacing, 120);
+assert.equal(ev.font.outlineSettings.outlineSize, 2);
+assert.deepEqual(ev.shadowOffset, { x: 2, y: 3 });
+assert.ok(Math.abs(ev.shadowColorAndOpacity.a - 0.502) < 0.001);
 console.log("unreal-plan ok");
