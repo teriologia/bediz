@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "bediz": { "command": "node", "args": ["packages/server/dist/index.js"] }
+  }
+}

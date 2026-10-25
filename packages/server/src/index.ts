@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { SliceSchema, toUnrealBrush, validateSlice } from "@bediz/core";
+import { SliceSchema, detectSlice, toUnrealBrush, validateSlice } from "@bediz/core";
 import { assets, getAsset, notify } from "./state.js";
 import { renderNineSlice } from "./render.js";
 import { startHttp } from "./http.js";
@@ -39,6 +39,19 @@ server.tool(
     a.slice = slice;
     notify();
     return text(a);
+  },
+);
+
+server.tool(
+  "auto_detect_slice",
+  "Görselin kenar piksellerini analiz edip 9-slice değerlerini önerir. apply=true ise asset'e uygular; sonucu render_preview ile kontrol et.",
+  { id: z.string(), tolerance: z.number().int().min(0).max(255).default(2), apply: z.boolean().default(false) },
+  async ({ id, tolerance, apply }) => {
+    const a = getAsset(id);
+    const { data, info } = await sharp(a.path).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const d = detectSlice(data, info.width, info.height, tolerance);
+    if (apply) { a.slice = d.slice; notify(); }
+    return text({ ...d, applied: apply });
   },
 );
 
