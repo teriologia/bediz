@@ -4,7 +4,7 @@ import { compileDesign, type Design } from "./design.js";
 import { layoutWidget } from "./layout.js";
 import { walk, type Node } from "./scene.js";
 import type { Asset } from "./slice.js";
-import { approxMeasure, inventoryRecipe, mainMenuRecipe, settingsRecipe, type ScreenRecipe } from "./screens.js";
+import { approxMeasure, dialogRecipe, inventoryRecipe, mainMenuRecipe, settingsRecipe, type ScreenRecipe } from "./screens.js";
 import { unrealPlan, type PlanStep } from "./unreal-plan.js";
 
 const assetsOf = (ds: Design[]) => new Map<string, Asset>(ds.map((d) => [d.id, { id: d.id, path: `C:\art\${d.id}.png`, width: d.width, height: d.height, slice: d.slice, tile: d.kind === "tile" || undefined }]));
@@ -17,7 +17,7 @@ const m = mainMenuRecipe({ id: "menu" });
 assert.equal(m.widget.fullscreen, true);
 assert.deepEqual([m.widget.width, m.widget.height], [1280, 720]);
 assert.deepEqual(m.widget.root.children.map((c) => c.id), ["Backdrop", "Panel"]);
-assert.deepEqual(m.designs.map((d) => d.id).sort(), ["menu_backdrop", "menu_btn_disabled", "menu_btn_hovered", "menu_btn_normal", "menu_btn_pressed", "menu_panel_frame", "menu_panel_gem", "menu_panelbg"]);
+assert.deepEqual(m.designs.map((d) => d.id).sort(), ["menu_backdrop", "menu_btn_disabled", "menu_btn_hovered", "menu_btn_normal", "menu_btn_pressed", "menu_panel_frame", "menu_panel_gem", "menu_panel_shade", "menu_panelbg"]);
 assert.equal(new Set(m.designs.map((d) => d.id)).size, m.designs.length, "tasarım id'leri benzersiz");
 const buttons = ofType(m, "Button");
 assert.deepEqual(buttons.map((b) => b.id), ["Btn1", "Btn2", "Btn3"]);
@@ -83,7 +83,7 @@ for (const theme of THEME_NAMES) for (const r of [mainMenuRecipe({ id: "t", them
 // ---- Unreal planı: tam ekran → SizeBox sarmalayıcı yok; SizeBox node'ları override alır ----
 const plan = unrealPlan(m.widget, (id) => assetsOf(m.designs).get(id), { folder: "/Game/T/Menu" });
 assert.ok(!plan.steps.some((s) => s.save === "SizeBox"), "tam ekran widget'a SizeBox sarılmaz");
-assert.equal(plan.steps.filter((s) => s.tool === "import_file").length, 8);
+assert.equal(plan.steps.filter((s) => s.tool === "import_file").length, 9);
 assert.equal(plan.steps.filter((s) => s.tool === "AddWidget" && (s.arguments.widgetClass as { refPath: string }).refPath.endsWith(".SizeBox")).length, 3);
 const vals = (st: PlanStep) => JSON.parse(st.arguments.values as string);
 const afterSave = (name: string, key: string) => { const i = plan.steps.findIndex((x) => x.save === name); return plan.steps.slice(i + 1, i + 3).filter((x) => x.tool === "set_properties").map(vals).find((v) => key in v); };
@@ -91,4 +91,21 @@ assert.deepEqual(afterSave("Btn1Box", "heightOverride"), { heightOverride: 64, b
 assert.equal(afterSave("Btn1Box", "widthOverride"), undefined, "genişlik verilmediyse override yok");
 // aynı widget sizeBox: true istenirse sarmalanır
 assert.ok(unrealPlan(m.widget, (id) => assetsOf(m.designs).get(id), { sizeBox: true }).steps.some((x) => x.save === "SizeBox"));
+// ghost stil: panel ince (mücevhersiz), tüm bileşenler ghost; derlenir ve ekrana sığar
+const gm = mainMenuRecipe({ id: "gm", style: "ghost" });
+assert.ok(!gm.designs.some((d) => d.id.endsWith("_gem")), "ghost panelde mücevher yok");
+assert.ok(gm.designs.every((d) => d.layers.every((l) => !("fill" in l && l.fill?.kind === "material" && !d.id.endsWith("panelbg") && !d.id.endsWith("backdrop") && d.kind !== "tile"))), "ghost tasarımlarda metal malzeme yok");
+assert.ok(gm.panel.height < m.panel.height, "ghost panel daha ince/kısa");
+for (const r of [gm, settingsRecipe({ id: "gs", style: "ghost" }), inventoryRecipe({ id: "gi", style: "ghost" })]) r.designs.forEach(compileDesign);
+
+// diyalog: scrim zemin (tile değil), mesaj sarılır, buton sayısı kadar eylem, ekrana sığar
+const dg = dialogRecipe({ id: "dlg", message: "Kaydedilmemiş ilerleme kaybolacak. Çıkmak istediğine emin misin? Bu işlem geri alınamaz.", buttons: ["Evet", "Hayır", "Vazgeç"] });
+assert.equal(dg.designs.find((d) => d.id === "dlg_scrim")!.kind, "sprite");
+assert.ok(!dg.designs.some((d) => d.id === "dlg_backdrop"));
+const dn = nodes(dg).map((n) => n.id);
+assert.equal(dn.filter((i) => /^Act\d$/.test(i)).length, 3);
+assert.ok(dn.filter((i) => /^Msg\d+$/.test(i)).length >= 2, "uzun mesaj sarılmalı");
+assert.equal(dg.widget.fullscreen, true);
+assert.throws(() => dialogRecipe({ id: "x", buttons: [] }));
+dg.designs.forEach(compileDesign);
 console.log("screens ok");

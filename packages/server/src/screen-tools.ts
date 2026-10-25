@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { InventoryInputSchema, MainMenuInputSchema, SettingsInputSchema, inventoryRecipe, mainMenuRecipe, settingsRecipe, type ScreenRecipe } from "@bediz/core";
+import { DialogInputSchema, InventoryInputSchema, MainMenuInputSchema, SettingsInputSchema, dialogRecipe, inventoryRecipe, mainMenuRecipe, settingsRecipe, type ScreenRecipe } from "@bediz/core";
 import { install } from "./component-tools.js";
 import { renderWidget } from "./render-scene.js";
 import { assets } from "./state.js";
@@ -38,5 +38,11 @@ export function registerScreenTools(server: McpServer) {
     `Envanter ekranı: columns×rows slot ızgarası, selected ile seçili hücreler (parıltılı çerçeve) ve alt bilgi satırı. ${COMMON}${THEMES}`,
     InventoryInputSchema.shape,
     async (input) => build(inventoryRecipe(input, measureText)),
+  );
+  server.tool(
+    "create_dialog_screen",
+    `Modal diyalog: yarı saydam karartma + panel + başlık + sarılmış mesaj + alt butonlar (buttons, en çok 3). Üst katman ekran olduğundan zemin döşemesi yerine scrim kullanır. ${COMMON}${THEMES}`,
+    DialogInputSchema.shape,
+    async (input) => build(dialogRecipe(input, measureText)),
   );
 }
