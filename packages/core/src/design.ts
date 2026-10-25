@@ -26,6 +26,7 @@ const MaterialFill = z.object({
   colors: z.array(Color).min(2).max(6).optional(),
   scale: z.number().positive().max(20).optional(),
   seed: z.number().int().min(0).max(9999).optional(),
+  wear: z.number().min(0).max(1).optional(), // 0..1: kenar aşınması + oyuklarda kir + lekeler
 }).strict();
 
 export const FillSchema = z.discriminatedUnion("kind", [
@@ -75,6 +76,9 @@ export const LayerSchema = z.discriminatedUnion("kind", [
   z.object({ id: z.string().min(1), name: z.string().optional(), opacity: z.number().min(0).max(1).optional(), hidden: z.boolean().optional(),
     kind: z.literal("gem"), cx: num, cy: num, size: num.positive(), color: Color,
     shape: z.enum(["diamond", "round", "hex"]).optional(), setting: z.enum(["gold", "none"]).optional() }).strict(),
+  // Köşe süsü: kıvrımlı bıçaklar (+ orta kabartma). fill/stroke/effects her parçaya uygulanır. Boyut slice marjını aşmamalı (gerilmesin).
+  z.object({ ...common, kind: z.literal("corners"), style: z.enum(["blade"]), size: num.positive(), inset: num.min(0).optional(),
+    which: z.array(z.enum(["tl", "tr", "bl", "br"])).min(1).optional(), studs: z.boolean().optional() }).strict(),
 ]);
 export type Layer = z.infer<typeof LayerSchema>;
 
@@ -187,7 +191,7 @@ function boxPath(x: number, y: number, w: number, h: number, r = 0, c = 0): stri
   return `M${fmt(x + r)},${fmt(y)} H${fmt(x + w - r)} ${a} ${fmt(x + w)},${fmt(y + r)} V${fmt(y + h - r)} ${a} ${fmt(x + w - r)},${fmt(y + h)} H${fmt(x + r)} ${a} ${fmt(x)},${fmt(y + h - r)} V${fmt(y + r)} ${a} ${fmt(x + r)},${fmt(y)} Z`;
 }
 
-export type Shape = Exclude<Layer, { kind: "gem" }>;
+export type Shape = Exclude<Layer, { kind: "gem" | "corners" }>;
 
 function geometry(l: Shape, W: number, H: number): { d: string; evenodd: boolean } {
   switch (l.kind) {
@@ -240,12 +244,40 @@ function expandGem(g: Extract<Layer, { kind: "gem" }>): Layer[] {
   return out.map((l) => ({ ...l, opacity: g.opacity, hidden: g.hidden }) as Layer);
 }
 
-/** Görünür katmanlar, mücevherler alt şekillere açılmış (çizim sırasıyla). */
+// ---------- köşe süsü ----------
+type Pt = [number, number];
+const cubic = (p0: Pt, p1: Pt, p2: Pt, p3: Pt, n = 10): Pt[] => Array.from({ length: n }, (_, k) => {
+  const t = (k + 1) / n, u = 1 - t;
+  return [u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
+    u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]] as Pt;
+});
+// "blade" birim şekilleri (160x160 kutu, sol üst köşe orijin): bir bıçak (diğeri köşegende aynalanır), orta diken, orta kabartma.
+const BLADE: Pt[] = [[28, 14], ...cubic([28, 14], [70, 10], [118, 14], [158, 30]), ...cubic([158, 30], [112, 34], [84, 52], [74, 88]), ...cubic([74, 88], [62, 58], [46, 46], [26, 44])];
+const THORN: Pt[] = [[56, 72], [106, 106], [72, 56]];
+const STUD: Pt[] = [[44, 26], [62, 44], [44, 62], [26, 44]];
+
+function expandCorners(c: Extract<Layer, { kind: "corners" }>, W: number, H: number): Layer[] {
+  const k = c.size / 160, inset = c.inset ?? 0, out: Layer[] = [];
+  const parts: [string, Pt[]][] = [["horn_a", BLADE], ["horn_b", BLADE.map(([x, y]) => [y, x] as Pt)], ["thorn", THORN], ...(c.studs === false ? [] : [["stud", STUD] as [string, Pt[]]])];
+  for (const corner of c.which ?? ["tl", "tr", "bl", "br"]) {
+    for (const [name, pts] of parts) {
+      out.push({ id: `${c.id}__${corner}_${name}`, kind: "polygon", fill: c.fill, stroke: c.stroke, effects: c.effects, opacity: c.opacity,
+        points: pts.map(([x, y]) => {
+          const px = inset + x * k, py = inset + y * k;
+          return [corner[1] === "r" ? W - px : px, corner[0] === "b" ? H - py : py] as Pt;
+        }) });
+    }
+  }
+  return out;
+}
+
+/** Görünür katmanlar; mücevher ve köşe süsleri alt şekillere açılmış (çizim sırasıyla). */
 export function expandLayers(d: Design): Shape[] {
   const out: Shape[] = [];
   for (const l of d.layers) {
     if (l.hidden) continue;
-    for (const s of l.kind === "gem" ? expandGem(l) : [l]) if (!s.hidden && s.kind !== "gem") out.push(s);
+    const subs: Layer[] = l.kind === "gem" ? expandGem(l) : l.kind === "corners" ? expandCorners(l, d.width, d.height) : [l];
+    for (const s of subs) if (!s.hidden && s.kind !== "gem" && s.kind !== "corners") out.push(s);
   }
   return out;
 }

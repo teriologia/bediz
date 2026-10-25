@@ -37,6 +37,13 @@ assert.ok(band(18) > band(77) + 15, `bevel: üst ${band(18).toFixed(0)} alt ${ba
 assert.equal(m[(48 * W + 48) * 4 + 3], 255);
 assert.equal(m[3], 0); // maske dışı saydam
 
+// aşınma: deterministik, alfa değişmez, kenarda ve oyuklarda rengi değiştirir; wear=0 ile aynı çıktıyı vermez
+const wm = (wear: number) => shadeMaterial({ w: W, h: W, mask, fill: { preset: "gold", seed: 1, wear }, bevel: { depth: 6, size: 8 } });
+assert.deepEqual(wm(0.6), wm(0.6));
+assert.notDeepEqual(wm(0.6), wm(0));
+assert.deepEqual(wm(0), m);
+assert.equal(wm(0.6)[(48 * W + 48) * 4 + 3], 255);
+
 // taş: gerçekten desenli (düz renk değil)
 let mean = 0;
 for (let i = 0; i < 64 * 64; i++) mean += lum(a, i % 64, (i / 64) | 0, 64);

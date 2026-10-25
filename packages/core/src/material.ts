@@ -14,6 +14,7 @@ export interface MaterialParams {
   colors?: string[]; // koyu → açık rampa; verilmezse preset'in rampası
   scale?: number; // büyük = daha ince desen
   seed?: number;
+  wear?: number; // 0..1
 }
 export interface Bevel { depth: number; size?: number; azimuth?: number } // depth/size px cinsinden kenar eğimi
 
@@ -208,6 +209,9 @@ export function shadeMaterial(inp: MaterialInput): Uint8Array {
   const wrap = !!inp.tileable, blur = boxBlur(H, w, h, 5, wrap);
   const ix = (k: number, len: number) => (wrap ? mod(k, len) : clamp(k, 0, len - 1));
   const ramp = rampFn(inp.fill.colors ?? def.ramp), hi = ramp(1), out = new Uint8Array(n * 4);
+  const wear = inp.fill.wear ?? 0, wseed = (inp.fill.seed ?? 1) + 77;
+  const wnx = Math.max(1, Math.round(w / 14)), wny = Math.max(1, Math.round(h / 14)), snx = Math.max(1, Math.round(w / 60)), sny = Math.max(1, Math.round(h / 60));
+  const wearTone: [number, number, number] = def.family === "metal" ? ramp(0.97) : [226, 219, 202];
   
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = y * w + x;
@@ -225,6 +229,17 @@ export function shadeMaterial(inp: MaterialInput): Uint8Array {
       const c = ramp(F.tone[i]), s = ao * (0.38 + 0.62 * Math.min(diffN, 1.5)) * F.dark[i];
       const m = 1;
       [r, g, b] = [c[0] * s * m + 255 * spec * 0.25, c[1] * s * m + 255 * spec * 0.25, c[2] * s * m + 255 * spec * 0.25];
+    }
+    if (wear > 0) {
+      const u = (x + 0.5) / w, v = (y + 0.5) / h;
+      // kir: oyuklarda ve geniş lekelerde koyu kahve
+      const cav = clamp((blur[i] - H[i]) * 0.6), stain = smooth(clamp((fbm(u, v, snx, sny, 3, wseed + 5) - 0.45) / 0.3));
+      const grime = clamp(wear * (0.9 * cav + 0.55 * stain));
+      r += (38 - r) * grime * 0.6; g += (26 - g) * grime * 0.6; b += (12 - b) * grime * 0.6;
+      // kenar aşınması: kenara yakın + gürültü eşiği → parlak (metal) / açık toz (taş)
+      const edge = 1 - clamp(dist[i] / (3 + wear * 5)), nz = fbm(u, v, wnx, wny, 3, wseed);
+      const ew = clamp((edge * 1.5 + (nz - 0.5) * 1.4 - 0.6) * 3) * wear * 0.85;
+      r += (wearTone[0] - r) * ew; g += (wearTone[1] - g) * ew; b += (wearTone[2] - b) * ew;
     }
     const o = i * 4;
     out[o] = clamp(r, 0, 255); out[o + 1] = clamp(g, 0, 255); out[o + 2] = clamp(b, 0, 255);

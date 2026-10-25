@@ -62,8 +62,9 @@ export function registerDesignTools(server: McpServer) {
           ring: "box gibi + thickness: ortası boş çerçeve halkası (eşit kalınlık).",
           polygon: "points [[x,y],...]", ellipse: "cx,cy,rx,ry",
           gem: "cx,cy,size,color + shape(diamond|round|hex) + setting(gold|none): hazır faset mücevher (altın yuvalı).",
+          corners: "style:blade, size (px; slice marjını aşma, yoksa gerilir), inset?, which?:[tl,tr,bl,br], studs? — 4 köşeye kıvrımlı bıçak süsü; fill/stroke/effects her parçaya uygulanır.",
         },
-        fills: "solid{color,opacity} · linear{angle,stops} · radial{stops} · material{preset,pattern?,colors?,scale?,seed?} · texture{...eski}",
+        fills: "solid{color,opacity} · linear{angle,stops} · radial{stops} · material{preset,pattern?,colors?,scale?,seed?,wear?(0..1: kenar aşınması+kir)} · texture{...eski}",
         effects: "bevel{depth,size,azimuth,highlight} · shadow{dx,dy,blur,color,opacity} · innerShadow · glow. Sıra önemli (üstten uygulanır).",
         tips: [
           "Katmanlar alttan üste çizilir (dizideki sıra).",
@@ -191,17 +192,18 @@ export function registerDesignTools(server: McpServer) {
       id: designId, width: z.number().int().min(120).max(2048).default(480), height: z.number().int().min(120).max(2048).default(320),
       background: z.enum(MATERIAL_PRESETS).default("stone"), pattern: z.enum(STONE_PATTERNS).optional(), frame: z.enum(MATERIAL_PRESETS).default("gold"),
       thickness: z.number().int().min(6).max(80).default(26), radius: z.number().int().min(0).max(60).default(14),
+      ornaments: z.boolean().default(true), cornerSize: z.number().int().min(24).max(200).default(64), wear: z.number().min(0).max(1).default(0.5),
       gem: z.boolean().default(true), gemColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#2fb5c9"),
       gemShape: z.enum(["diamond", "round", "hex"]).default("diamond"), gemSize: z.number().int().min(16).max(160).default(44),
     },
     async (p) => {
-      const t = p.thickness, r = p.radius, m = t + 14, S = 2 * m + 96;
+      const t = p.thickness, r = p.radius, m = Math.max(t + 14, p.ornaments ? p.cornerSize + 2 : 0), S = 2 * m + 96;
       const bgD = DesignSchema.parse({ id: `${p.id}_bg`, kind: "tile", width: 256, height: 256, layers: [
-        { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: p.background, pattern: p.pattern, seed: 5 } },
+        { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: p.background, pattern: p.pattern, seed: 5, wear: p.wear * 0.8 } },
       ] });
       const frameD = DesignSchema.parse({ id: `${p.id}_frame`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: [
         { id: "outline", kind: "ring", inset: 0, thickness: t + 5, radius: r + 2, fill: { kind: "solid", color: "#1a1008" } },
-        { id: "metal", kind: "ring", inset: 2, thickness: t, radius: r, fill: { kind: "material", preset: p.frame, seed: 3 },
+        { id: "metal", kind: "ring", inset: 2, thickness: t, radius: r, fill: { kind: "material", preset: p.frame, seed: 3, wear: p.wear },
           effects: [{ kind: "bevel", depth: 7, size: 10 }, { kind: "shadow", dx: 0, dy: 2, blur: 2, opacity: 0.5 }] },
         // oyuk çizgisi: koyu iz + altında ince parlak kenar
         { id: "groove", kind: "ring", inset: 2 + Math.round(t * 0.4), thickness: 2, radius: Math.max(0, r - Math.round(t * 0.4)), fill: { kind: "solid", color: "#2e1c06", opacity: 0.6 } },
@@ -209,6 +211,8 @@ export function registerDesignTools(server: McpServer) {
         // iç dudak: açıklığa yumuşak gölge düşürür
         { id: "lip", kind: "ring", inset: t + 2, thickness: 4, radius: Math.max(0, r - t - 2), fill: { kind: "solid", color: "#0e0905", opacity: 0.9 },
           effects: [{ kind: "shadow", dx: 0, dy: 3, blur: 7, opacity: 0.75 }] },
+        ...(p.ornaments ? [{ id: "corners", kind: "corners", style: "blade", size: p.cornerSize, inset: 1, fill: { kind: "material", preset: p.frame, seed: 4, wear: p.wear },
+          stroke: { color: "#1a1008", width: 1.6 }, effects: [{ kind: "bevel", depth: 5, size: 6 }, { kind: "shadow", dx: 1, dy: 3, blur: 3, opacity: 0.6 }] }] : []),
       ] });
       const G = Math.round(p.gemSize * 2.2);
       const gemD = DesignSchema.parse({ id: `${p.id}_gem`, kind: "sprite", width: G, height: G, layers: [
