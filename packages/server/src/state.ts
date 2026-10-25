@@ -1,11 +1,16 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { z } from "zod";
-import { AssetSchema, type Asset } from "@bediz/core";
+import { AssetSchema, WidgetSchema, type Asset, type Widget } from "@bediz/core";
 
 export const assets = new Map<string, Asset>();
+export const widgets = new Map<string, Widget>();
 
-const ProjectSchema = z.object({ version: z.literal(1), assets: z.array(AssetSchema) });
+const ProjectSchema = z.object({
+  version: z.literal(1),
+  assets: z.array(AssetSchema),
+  widgets: z.array(WidgetSchema).default([]),
+});
 
 let projectFile: string | undefined;
 
@@ -13,6 +18,7 @@ let projectFile: string | undefined;
 export function openProject(file: string) {
   projectFile = resolve(file);
   assets.clear();
+  widgets.clear();
   if (!existsSync(projectFile)) return;
   let parsed;
   try {
@@ -21,6 +27,7 @@ export function openProject(file: string) {
     throw new Error(`proje dosyası okunamadı (${projectFile}): ${(e as Error).message}`);
   }
   for (const a of parsed.assets) assets.set(a.id, { ...a, path: resolve(dirname(projectFile), a.path) });
+  for (const w of parsed.widgets) widgets.set(w.id, w);
 }
 
 function save() {
@@ -33,6 +40,7 @@ function save() {
       const rel = relative(dir, a.path);
       return { ...a, path: (isAbsolute(rel) ? rel : rel.replaceAll("\\", "/")) };
     }),
+    widgets: [...widgets.values()],
   };
   const tmp = `${projectFile}.tmp`;
   writeFileSync(tmp, JSON.stringify(data, null, 2));
@@ -43,6 +51,12 @@ function save() {
 const listeners = new Set<() => void>();
 export const onChange = (fn: () => void) => (listeners.add(fn), () => listeners.delete(fn));
 export const notify = () => (save(), listeners.forEach((fn) => fn()));
+
+export function getWidget(id: string): Widget {
+  const w = widgets.get(id);
+  if (!w) throw new Error(`widget yok: ${id}`);
+  return w;
+}
 
 export function getAsset(id: string): Asset {
   const a = assets.get(id);

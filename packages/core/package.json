@@ -1,6 +1,6 @@
 {
   "name": "@bediz/core", "version": "0.0.1", "type": "module",
   "main": "dist/index.js", "types": "dist/index.d.ts",
-  "scripts": { "test": "tsc -b && node dist/slice.test.js && node dist/detect.test.js" },
+  "scripts": { "test": "tsc -b && node dist/slice.test.js && node dist/detect.test.js && node dist/layout.test.js" },
   "dependencies": { "zod": "^3.23.8" }
 }

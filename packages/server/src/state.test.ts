@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { assets, notify, openProject } from "./state.js";
+import { assets, notify, openProject, widgets } from "./state.js";
 
 const dir = mkdtempSync(join(tmpdir(), "bediz-proj-"));
 const file = join(dir, "p.bediz.json");
@@ -17,6 +17,12 @@ assert.equal(JSON.parse(readFileSync(file, "utf8")).assets[0].path, "art/x.png")
 
 openProject(file); // yeniden aç → aynı veri, mutlak yola çözülmüş
 assert.deepEqual(assets.get("x"), a);
+
+const w = { id: "w", width: 100, height: 50, root: { id: "Root", type: "CanvasPanel" as const, children: [] } };
+widgets.set("w", w);
+notify();
+openProject(file);
+assert.deepEqual(widgets.get("w"), w);
 
 writeFileSync(file, "{ bozuk");
 assert.throws(() => openProject(file), /okunamadı/);

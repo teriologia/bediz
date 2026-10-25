@@ -12,6 +12,6 @@
     "sharp": "^0.33.5"
   },
   "scripts": {
-    "test": "tsc -b && node dist/render.test.js && node dist/state.test.js"
+    "test": "tsc -b && node dist/render.test.js && node dist/state.test.js && node dist/scene.test.js"
   }
 }
