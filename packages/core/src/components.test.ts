@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { BUTTON_STATES, barRecipe, buttonRecipe, skillBarRecipe, slotRecipe } from "./components.js";
-import { THEME_NAMES } from "./container.js";
+import { THEME_NAMES, containerRecipe } from "./container.js";
 import { compileDesign, expandLayers, type Design } from "./design.js";
 import { layoutWidget } from "./layout.js";
 import { assertCanHaveChild, assertPropsFit, type Node } from "./scene.js";
@@ -17,6 +17,11 @@ const after = (steps: PlanStep[], name: string, key: string) => {
 // ---- buton ----
 const b = buttonRecipe({ id: "play", label: "OYNA" });
 assert.deepEqual(b.designs.map((d) => d.id), BUTTON_STATES.map((s) => `play_${s}`));
+assert.equal(b.selected, undefined);
+const bs = buttonRecipe({ id: "tab", selected: true });
+assert.equal(bs.selected, "tab_selected");
+assert.equal(bs.designs.length, 5);
+compileDesign(bs.designs[4]);
 assert.ok(b.designs.every((d) => d.kind === "frame9" && JSON.stringify(d.slice) === JSON.stringify(b.designs[0].slice)), "tüm durumların slice'ı aynı olmalı");
 for (const d of b.designs) { compileDesign(d); assert.ok(expandLayers(d).length > 3); }
 const btn = b.widget.root.children[0];
@@ -99,4 +104,19 @@ const sbNodes = [...(function* w(n: Node): Generator<Node> { yield n; for (const
 assert.equal(sbNodes.filter((n) => /^Key\d$/.test(n.id)).map((n) => n.text).join(""), "QWER");
 assert.deepEqual(sbNodes.filter((n) => n.id.startsWith("Cooldown")).map((n) => n.id), ["Cooldown2"]);
 for (const d of sb.designs) compileDesign(d);
+// ghost stil: ince çizgi + cam yüzey, metal katmanları yok; 4 durum da derlenir
+const gh = buttonRecipe({ id: "gh", label: "X", style: "ghost" });
+for (const d of gh.designs) {
+  compileDesign(d);
+  assert.deepEqual(d.layers.map((l) => l.id), ["face", "line", "line2"]);
+}
+assert.ok(gh.designs.every((d) => d.layers[0].opacity! < 1));
+// stil ailesi: ghost slot / çubuk / container metal katmanı içermez ve derlenir; ghost container varsayılan olarak ince (süs, mücevher yok)
+for (const d of [...slotRecipe({ id: "gs", style: "ghost" }).designs, ...barRecipe({ id: "gb", style: "ghost" }).designs.slice(0, 1)]) {
+  compileDesign(d);
+  assert.ok(!d.layers.some((l) => "fill" in l && l.fill?.kind === "material"), `${d.id}: ghost'ta material olmamalı`);
+}
+const gc = containerRecipe({ id: "gc", style: "ghost" });
+assert.ok(!gc.gem && gc.resolved.thickness === 16 && gc.frame.layers.every((l) => !("fill" in l && l.fill?.kind === "material")));
+assert.equal(containerRecipe({ id: "gc2", style: "ghost", thickness: 30 }).resolved.thickness, 30);
 console.log("components ok");

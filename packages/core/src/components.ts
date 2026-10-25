@@ -29,6 +29,8 @@ export const ButtonInputSchema = z.object({
   label: z.string().max(60).optional(), width: z.number().int().min(60).max(1024).optional(), height: z.number().int().min(28).max(512).optional(),
   fontSize: z.number().int().min(8).max(96).optional(), rim: z.number().int().min(2).max(16).optional(), chamfer: z.boolean().optional(),
   wear: z.number().min(0).max(1).optional(), textColor: Hex.optional(),
+  selected: z.boolean().optional(), // true: ek `<id>_selected` tasarımı üretir (sekme/anahtar için kalıcı seçili görünüm)
+  style: z.enum(["metal", "ghost"]).optional(), // metal: kalın bevel'li metal çerçeve (varsayılan); ghost: ince çift çizgi, cam yüzey (sekme/ikincil düğme)
   faceOpacity: z.number().min(0).max(1).optional(), // 1: opak yüzey; düşük: şeffaf/cam buton (zemin görünür)
 }).strict();
 export type ButtonInput = z.infer<typeof ButtonInputSchema>;
@@ -36,9 +38,10 @@ export const BUTTON_STATES = ["normal", "hovered", "pressed", "disabled"] as con
 
 /**
  * Dört durumlu 9-slice buton: metal çerçeve + degrade yüzey. Her durum aynı slice'a sahiptir (UE durum geçişinde şekil değişmez).
+ * `selected: true` (UE Button durumu değil): sekme/anahtar için kalıcı seçili görünüm; oyunda brush değiştirilerek gösterilir.
  * normal: temel · hovered: parlak çerçeve, parıltı, açık yüzey · pressed: koyu çerçeve, derin iç gölge · disabled: gri, sönük.
  */
-export function buttonRecipe(input: ButtonInput): ComponentRecipe & { states: Record<(typeof BUTTON_STATES)[number], string> } {
+export function buttonRecipe(input: ButtonInput): ComponentRecipe & { states: Record<(typeof BUTTON_STATES)[number], string>; selected?: string } {
   const { id, theme = "gold-stone", ...o } = ButtonInputSchema.parse(input);
   const look = LOOK[theme], metal = metalOf(theme, o.frame);
   const w = o.width ?? 200, h = o.height ?? 56, t = o.rim ?? 6, wear = o.wear ?? 0.3, chamfer = o.chamfer ?? true;
@@ -46,15 +49,24 @@ export function buttonRecipe(input: ButtonInput): ComponentRecipe & { states: Re
   // Köşe: pah ya da yuvarlak; iç katmanlarda eşit kalınlık için küçülür.
   const corner = (inset: number) => (chamfer ? { chamfer: Math.max(0, Math.round(9 - (inset - 1) * 0.586)) } : { radius: Math.max(0, 9 - (inset - 1)) });
 
-  const make = (state: (typeof BUTTON_STATES)[number]): Design => {
-    const hov = state === "hovered", prs = state === "pressed", dis = state === "disabled";
-    const top = dis ? "#3a3d41" : prs ? shade(look.top, -0.4) : hov ? shade(look.top, 0.28) : look.top;
-    const bottom = dis ? "#1d1f22" : prs ? shade(look.bottom, -0.4) : hov ? shade(look.bottom, 0.2) : look.bottom;
-    const rimFill = { kind: "material" as const, preset: dis ? ("silver" as const) : metal, seed: 7, wear: hov ? 0 : wear };
+  const make = (state: (typeof BUTTON_STATES)[number] | "selected"): Design => {
+    const hov = state === "hovered", prs = state === "pressed", dis = state === "disabled", sel = state === "selected";
+    const top = dis ? "#3a3d41" : prs || sel ? shade(look.top, -0.4) : hov ? shade(look.top, 0.28) : look.top;
+    const bottom = dis ? "#1d1f22" : prs || sel ? shade(look.bottom, -0.4) : hov ? shade(look.bottom, 0.2) : look.bottom;
+    if (o.style === "ghost") {
+      // İnce çizgi dili: tek piksel çizgiler, cam yüzey; hover'da çizgi parlar ve altın parıltı eklenir, pressed'de yüzey koyulaşır.
+      const lw = o.rim ?? 2, line = dis ? "#7a7f85" : sel ? "#e0b860" : look.text, lo = dis ? 0.35 : prs ? 0.7 : hov || sel ? 1 : 0.6;
+      return DesignSchema.parse({ id: `${id}_${state}`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: [
+        { id: "face", kind: "box", inset: 0, ...corner(0), opacity: sel ? 0.92 : o.faceOpacity ?? (hov ? 0.55 : 0.32), fill: { kind: "linear", angle: 90, stops: sel ? [[0, "#3a2e14"], [1, "#150f05"]] : [[0, hov ? look.top : "#0c0e11"], [1, prs ? "#050607" : hov ? look.bottom : "#07080a"]] } },
+        { id: "line", kind: "ring", inset: 0, thickness: sel ? lw + 1 : lw, ...corner(0), opacity: lo, fill: { kind: "solid", color: line }, effects: hov ? [{ kind: "glow", blur: 3, color: "#ffd27a", opacity: 0.55 }] : [] },
+        { id: "line2", kind: "ring", inset: lw + 2, thickness: 1, ...corner(lw + 2), opacity: lo * 0.35, fill: { kind: "solid", color: line } },
+      ] });
+    }
+    const rimFill = { kind: "material" as const, preset: dis ? ("silver" as const) : metal, seed: 7, wear: hov || sel ? 0 : wear };
     return DesignSchema.parse({ id: `${id}_${state}`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: [
       { id: "outline", kind: "ring", inset: 0, thickness: t + 3, ...corner(0), fill: { kind: "solid", color: outlineColor } },
       { id: "rim", kind: "ring", inset: 1, thickness: t, ...corner(1), fill: rimFill,
-        effects: [{ kind: "bevel", depth: 3, size: Math.max(2, Math.min(12, t - 1)) }, ...(hov ? [{ kind: "glow", blur: 4, color: "#ffd27a", opacity: 0.5 }] : [])] },
+        effects: [{ kind: "bevel", depth: 3, size: Math.max(2, Math.min(12, t - 1)) }, ...(hov || sel ? [{ kind: "glow", blur: 4, color: "#ffd27a", opacity: sel ? 0.8 : 0.5 }] : [])] },
       ...(prs || dis ? [{ id: "rim_dim", kind: "ring", inset: 1, thickness: t, ...corner(1), fill: { kind: "solid", color: "#000000", opacity: dis ? 0.5 : 0.3 } }] : []),
       { id: "face", kind: "box", inset: 1 + t, ...corner(1 + t), opacity: o.faceOpacity, fill: { kind: "linear", angle: 90, stops: [[0, top], [1, bottom]] },
         effects: [{ kind: "innerShadow", blur: prs ? 5 : 3, dy: prs ? 3 : 1, opacity: prs ? 0.9 : 0.6 }] },
@@ -62,7 +74,7 @@ export function buttonRecipe(input: ButtonInput): ComponentRecipe & { states: Re
       { id: "gloss", kind: "box", inset: 1 + t, h: m - (1 + t), ...corner(1 + t), fill: { kind: "solid", color: "#ffffff", opacity: dis ? 0.03 : prs ? 0.04 : hov ? 0.18 : 0.1 } },
     ] });
   };
-  const designs = BUTTON_STATES.map(make);
+  const designs = [...BUTTON_STATES, ...(o.selected ? (["selected"] as const) : [])].map(make);
   const states = Object.fromEntries(BUTTON_STATES.map((s) => [s, `${id}_${s}`])) as Record<(typeof BUTTON_STATES)[number], string>;
 
   const widget = WidgetSchema.parse({ id, width: w, height: h, root: { id: "Root", type: "CanvasPanel", children: [
@@ -70,13 +82,14 @@ export function buttonRecipe(input: ButtonInput): ComponentRecipe & { states: Re
       states: { hovered: { asset: states.hovered }, pressed: { asset: states.pressed }, disabled: { asset: states.disabled } },
       children: [{ id: "Label", type: "TextBlock", text: o.label ?? "Button", fontSize: o.fontSize ?? 22, color: o.textColor ?? look.text, slot: { hAlign: "Center", vAlign: "Center" }, children: [] }] },
   ] } });
-  return { theme, designs, widget, states };
+  return { theme, designs, widget, states, ...(o.selected ? { selected: `${id}_selected` } : {}) };
 }
 
 // ---------------------------------------------------------------- İLERLEME ÇUBUĞU
 export const BarInputSchema = z.object({
   id: Id, theme: z.enum(THEME_NAMES).optional(), frame: z.enum(MATERIAL_PRESETS).optional(), fillColor: Hex.optional(),
   width: z.number().int().min(60).max(2048).optional(), height: z.number().int().min(16).max(128).optional(), percent: z.number().min(0).max(1).optional(),
+  style: z.enum(["metal", "ghost"]).optional(),
 }).strict();
 export type BarInput = z.infer<typeof BarInputSchema>;
 
@@ -86,7 +99,11 @@ export function barRecipe(input: BarInput): ComponentRecipe & { inset: number } 
   const look = LOOK[theme], metal = metalOf(theme, o.frame), fillColor = o.fillColor ?? look.fill;
   const w = o.width ?? 240, h = o.height ?? 28, rim = 3, inset = rim + 1, r = Math.min(6, Math.floor(h / 4));
   const mx = 14, my = Math.min(10, Math.floor(h / 2) - 2), TW = 2 * mx + 16, TH = 2 * my + 8;
-  const trough = DesignSchema.parse({ id: `${id}_trough`, kind: "frame9", width: TW, height: TH, slice: { left: mx, top: my, right: mx, bottom: my }, layers: [
+  const troughLayers = o.style === "ghost" ? [
+    { id: "well", kind: "box", inset: 0, radius: r, opacity: 0.5, fill: { kind: "linear", angle: 90, stops: [[0, "#06080a"], [1, "#12171b"]] }, effects: [{ kind: "innerShadow", blur: 3, dy: 1, opacity: 0.7 }] },
+    { id: "line", kind: "ring", inset: 0, thickness: 2, radius: r, opacity: 0.6, fill: { kind: "solid", color: look.text } },
+  ] : undefined;
+  const trough = DesignSchema.parse({ id: `${id}_trough`, kind: "frame9", width: TW, height: TH, slice: { left: mx, top: my, right: mx, bottom: my }, layers: troughLayers ?? [
     { id: "outline", kind: "ring", inset: 0, thickness: rim + 2, radius: r + 1, fill: { kind: "solid", color: outlineColor } },
     { id: "rim", kind: "ring", inset: 1, thickness: rim, radius: r, fill: { kind: "material", preset: metal, seed: 9, wear: 0.25 }, effects: [{ kind: "bevel", depth: 2.5, size: 2 }] },
     { id: "well", kind: "box", inset: 1 + rim, radius: Math.max(0, r - rim), fill: { kind: "linear", angle: 90, stops: [[0, "#06080a"], [1, "#161b1f"]] }, effects: [{ kind: "innerShadow", blur: 3, dy: 2, opacity: 0.9 }] },
@@ -106,14 +123,21 @@ export function barRecipe(input: BarInput): ComponentRecipe & { inset: number } 
 // ---------------------------------------------------------------- SLOT
 export const SlotInputSchema = z.object({
   id: Id, theme: z.enum(THEME_NAMES).optional(), frame: z.enum(MATERIAL_PRESETS).optional(), size: z.number().int().min(32).max(256).optional(),
+  style: z.enum(["metal", "ghost"]).optional(),
 }).strict();
 export type SlotInput = z.infer<typeof SlotInputSchema>;
 
 /** Envanter/eşya yuvası: metal çerçeveli çökük koyu kutu. İki varyant: normal ve seçili (parıltılı çerçeve). */
 export function slotRecipe(input: SlotInput): ComponentRecipe & { variants: { normal: string; selected: string } } {
   const { id, theme = "gold-stone", ...o } = SlotInputSchema.parse(input);
-  const metal = metalOf(theme, o.frame), size = o.size ?? 64, t = 5, m = Math.min(16, Math.floor(size / 3));
-  const make = (variant: "normal" | "selected") => DesignSchema.parse({ id: `${id}_${variant}`, kind: "frame9", width: size, height: size, slice: { left: m, top: m, right: m, bottom: m }, layers: [
+  const look = LOOK[theme], metal = metalOf(theme, o.frame), size = o.size ?? 64, t = 5, m = Math.min(16, Math.floor(size / 3));
+  const sel = (v: string) => v === "selected";
+  const makeGhost = (variant: "normal" | "selected") => DesignSchema.parse({ id: `${id}_${variant}`, kind: "frame9", width: size, height: size, slice: { left: m, top: m, right: m, bottom: m }, layers: [
+    { id: "well", kind: "box", inset: 0, chamfer: 6, opacity: sel(variant) ? 0.8 : 0.45, fill: { kind: "linear", angle: 90, stops: sel(variant) ? [[0, "#4a3a18"], [1, "#1c1608"]] : [[0, "#0d1114"], [1, "#07090b"]] }, effects: [{ kind: "innerShadow", blur: 6, dy: 2, opacity: 0.8 }] },
+    { id: "line", kind: "ring", inset: 0, thickness: sel(variant) ? 3 : 2, chamfer: 6, opacity: sel(variant) ? 1 : 0.6, fill: { kind: "solid", color: sel(variant) ? "#e0b860" : look.text } },
+    { id: "line2", kind: "ring", inset: 4, thickness: 1, chamfer: 3, opacity: 0.3, fill: { kind: "solid", color: look.text } },
+  ] });
+  const make = (variant: "normal" | "selected") => o.style === "ghost" ? makeGhost(variant) : DesignSchema.parse({ id: `${id}_${variant}`, kind: "frame9", width: size, height: size, slice: { left: m, top: m, right: m, bottom: m }, layers: [
     { id: "outline", kind: "ring", inset: 0, thickness: t + 2, chamfer: 7, fill: { kind: "solid", color: outlineColor } },
     { id: "rim", kind: "ring", inset: 1, thickness: t, chamfer: 6, fill: { kind: "material", preset: metal, seed: 11, wear: variant === "selected" ? 0 : 0.3 },
       effects: [{ kind: "bevel", depth: 3, size: 3 }, ...(variant === "selected" ? [{ kind: "glow", blur: 6, color: "#ffd27a", opacity: 0.95 }] : [])] },

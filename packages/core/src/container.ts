@@ -14,13 +14,17 @@ export interface ContainerParams {
   thickness: number; radius: number; chamfer: boolean; cracks: boolean; wear: number;
   ornaments: boolean; cornerStyle: (typeof STYLES)[number]; cornerSize: number;
   gem: boolean; gemColor: string; gemShape: "diamond" | "round" | "hex"; gemSize: number;
+  style: "metal" | "ghost";
 }
 
 const BASE: ContainerParams = {
   width: 480, height: 320, background: "stone", pattern: "flagstone", frame: "gold", band: "slate",
   thickness: 30, radius: 14, chamfer: true, cracks: true, wear: 0.5,
-  ornaments: true, cornerStyle: "filigree", cornerSize: 64, gem: true, gemColor: "#2a9fb0", gemShape: "diamond", gemSize: 44,
+  ornaments: true, cornerStyle: "filigree", cornerSize: 64, gem: true, gemColor: "#2a9fb0", gemShape: "diamond", gemSize: 44, style: "metal",
 };
+// ghost: ince çift çizgi, süs/mücevher/çatlak yok; çizgi rengi çerçeve metalinden gelir.
+const GHOST: Partial<ContainerParams> = { thickness: 16, gem: false, ornaments: false, cracks: false };
+const GHOST_LINE: Record<string, string> = { gold: "#c9a45a", silver: "#b9c2cc", bronze: "#b87b45", wood: "#a9855a", stone: "#a09a8e", slate: "#8e9aa6" };
 
 /** Hazır görünümler: sadece farkları yazılır, kullanıcı parametreleri üstüne biner. */
 export const CONTAINER_THEMES: Record<ThemeName, Partial<ContainerParams>> = {
@@ -41,6 +45,7 @@ export const ContainerInputSchema = z.object({
   thickness: z.number().int().min(10).max(90).optional(), radius: z.number().int().min(0).max(60).optional(),
   chamfer: z.boolean().optional(), cracks: z.boolean().optional(), wear: z.number().min(0).max(1).optional(),
   ornaments: z.boolean().optional(), cornerStyle: z.enum(STYLES).optional(), cornerSize: z.number().int().min(24).max(200).optional(),
+  style: z.enum(["metal", "ghost"]).optional(), // ghost: ince çizgili çerçeve (metal bevel/süs yok)
   gem: z.boolean().optional(), gemColor: Hex.optional(), gemShape: z.enum(["diamond", "round", "hex"]).optional(), gemSize: z.number().int().min(16).max(160).optional(),
 }).strict();
 export type ContainerInput = z.infer<typeof ContainerInputSchema>;
@@ -58,7 +63,7 @@ export interface ContainerRecipe {
 export function containerRecipe(input: ContainerInput): ContainerRecipe {
   const { id, theme = "gold-stone", ...explicit } = ContainerInputSchema.parse(input);
   const defined = Object.fromEntries(Object.entries(explicit).filter(([, v]) => v !== undefined));
-  const p: ContainerParams = { ...BASE, ...CONTAINER_THEMES[theme], ...defined };
+  const p: ContainerParams = { ...BASE, ...CONTAINER_THEMES[theme], ...(defined.style === "ghost" ? GHOST : {}), ...defined };
   const t = p.thickness, r = p.radius, c0 = Math.max(8, Math.round(r * 1.6));
 
   // Süs pah kırık köşenin dışına taşmasın diye içeri alınır; slice marjı süsü kapsar (yoksa gerilir).
@@ -81,7 +86,13 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
   const bg = DesignSchema.parse({ id: `${id}_bg`, kind: "tile", width: 256, height: 256, layers: [
     { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: p.background, pattern: p.pattern, seed: 5, wear: p.wear * 0.8 } },
   ] });
-  const frame = DesignSchema.parse({ id: `${id}_frame`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: [
+  const line = GHOST_LINE[p.frame] ?? "#c9a45a";
+  const ghostLayers = [
+    { id: "shade", kind: "ring", inset: 0, thickness: 4, ...corner(0), fill: { kind: "solid", color: "#000000", opacity: 0.55 }, effects: [{ kind: "shadow", dx: 0, dy: 2, blur: 5, opacity: 0.6 }] },
+    { id: "line", kind: "ring", inset: 1, thickness: 2, ...corner(1), fill: { kind: "solid", color: line, opacity: 0.85 } },
+    { id: "line2", kind: "ring", inset: 7, thickness: 1, ...corner(7), fill: { kind: "solid", color: line, opacity: 0.4 } },
+  ];
+  const frame = DesignSchema.parse({ id: `${id}_frame`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: p.style === "ghost" ? ghostLayers : [
     { id: "outline", kind: "ring", inset: 0, thickness: t + o + 3, ...corner(0), fill: { kind: "solid", color: "#120b05" } },
     { id: "gold_outer", kind: "ring", inset: o, thickness: g, ...corner(o), fill: metal(3),
       effects: [{ kind: "bevel", depth: 4, size: Math.max(2, Math.round(g * 0.6)) }, { kind: "shadow", dx: 0, dy: 2, blur: 4, opacity: 0.7 }] },
