@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { unrealPlan } from "@bediz/core";
-import { assets, getWidget, projectDir } from "./state.js";
+import { assets, fonts, getWidget, projectDir } from "./state.js";
 
 export function registerUnrealTools(server: McpServer) {
   server.tool(
@@ -16,7 +16,7 @@ export function registerUnrealTools(server: McpServer) {
     "Uygulamadan sonra dokuları doğrula (tools/run-unreal-plan.mjs bunu kendisi yapar): UE bazen bozuk (siyah) doku içe aktarabiliyor.",
     { widget: z.string(), folder: z.string().optional(), sizeBox: z.boolean().optional(), verify: z.boolean().default(false) },
     async ({ widget, folder, sizeBox, verify }) => {
-      const plan = unrealPlan(getWidget(widget), (id) => assets.get(id), { folder, sizeBox, verify });
+      const plan = unrealPlan(getWidget(widget), (id) => assets.get(id), { folder, sizeBox, verify, fonts: (id) => fonts.get(id)?.ueAsset });
       for (const id of Object.keys(plan.textures)) {
         const a = assets.get(id)!;
         if (!existsSync(a.path)) throw new Error(`asset dosyası yok: ${a.path} (export_design ile yeniden dışa aktar)`);

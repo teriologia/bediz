@@ -45,6 +45,7 @@ export const nodePropShape = {
   height: z.number().positive().optional(), // SizeBox: yükseklik (yoksa içeriğinki)
   text: z.string().optional(), // TextBlock
   fontSize: z.number().positive().optional(),
+  font: z.string().optional(), // TextBlock: register_font ile kaydedilmiş font kimliği (yoksa Roboto Bold)
   color: z.string().regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/, "renk #RRGGBB veya #RRGGBBAA olmalı").optional(),
 };
 
@@ -63,6 +64,7 @@ export interface Node {
   height?: number;
   text?: string;
   fontSize?: number;
+  font?: string;
   color?: string;
   children: Node[];
 }
@@ -113,5 +115,5 @@ export function assertPropsFit(type: NodeType, p: Partial<Node>) {
   if ((p.fill || p.percent !== undefined || p.inset !== undefined) && type !== "ProgressBar") bad("fill/percent/inset", "ProgressBar");
   if (p.size && type !== "Image" && type !== "ProgressBar") bad("size", "Image/ProgressBar");
   if ((p.width !== undefined || p.height !== undefined) && type !== "SizeBox") bad("width/height", "SizeBox");
-  if ((p.text !== undefined || p.fontSize || p.color) && type !== "TextBlock") bad("text/fontSize/color", "TextBlock");
+  if ((p.text !== undefined || p.fontSize || p.color || p.font) && type !== "TextBlock") bad("text/fontSize/font/color", "TextBlock");
 }

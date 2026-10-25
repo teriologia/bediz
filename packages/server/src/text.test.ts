@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { measureText, textMetrics, textPathData } from "./text.js";
+import { createRequire } from "node:module";
+import { measureText, registerFont, textMetrics, textPathData } from "./text.js";
 
 // ölçü: boyutla doğrusal artar, daha uzun metin daha geniş, boş metin 0
 const a = measureText("Hello", 20), b = measureText("Hello", 40);
@@ -22,4 +23,10 @@ assert.match(p, /^M/);
 assert.notEqual(textPathData("Ana Menü", 10, 0, 30), p);
 const m = textMetrics(30);
 assert.ok(m.ascent > 0 && m.descent > 0 && Math.abs(m.lineHeight - (m.ascent + m.descent)) < 1e-6);
+// kullanıcı fontu: kayıttan sonra farklı ölçü verir; Roboto'da olmayan glif yedeğe düşer; kayıtsız kimlik hata verir
+registerFont("light", createRequire(import.meta.url).resolve("@fontsource/roboto/files/roboto-latin-300-normal.woff"));
+assert.notEqual(measureText("Hello", 20, "light").w, a.w);
+assert.ok(measureText("Ğş", 20, "light").w > 0);
+assert.notEqual(textPathData("Ana", 0, 0, 30, "light"), textPathData("Ana", 0, 0, 30));
+assert.throws(() => measureText("x", 20, "yok"), /kayıtlı değil/);
 console.log("text ok");

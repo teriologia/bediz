@@ -3,7 +3,7 @@ import type { Margin, Node, Slot, Widget } from "./scene.js";
 export interface Rect { x: number; y: number; w: number; h: number }
 export type AssetSize = (assetId: string) => { w: number; h: number } | undefined;
 /** Metin ölçücü (gerçek font ölçüsü sunucudan enjekte edilir); verilmezse karakter başına 0.6×fontSize tahmini. */
-export type TextMeasure = (text: string, fontSize: number) => { w: number; h: number };
+export type TextMeasure = (text: string, fontSize: number, font?: string) => { w: number; h: number };
 const approxText: TextMeasure = (t, fs) => ({ w: Math.ceil(t.length * fs * 0.6), h: Math.ceil(fs * 1.25) });
 
 const ZERO: Margin = { left: 0, top: 0, right: 0, bottom: 0 };
@@ -23,7 +23,7 @@ export function layoutWidget(widget: Widget, assetSize: AssetSize, measureText: 
         const s = n.brush && assetSize(n.brush.asset);
         return s ?? { w: 0, h: 0 };
       }
-      case "TextBlock": return measureText(n.text ?? "", n.fontSize ?? 16);
+      case "TextBlock": return measureText(n.text ?? "", n.fontSize ?? 16, n.font);
       case "Border":
       case "Button": return n.children[0] ? outer(n.children[0]) : { w: 0, h: 0 };
       case "SizeBox": {

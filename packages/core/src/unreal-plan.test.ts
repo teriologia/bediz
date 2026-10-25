@@ -110,4 +110,9 @@ const odd: Widget = WidgetSchema.parse({ id: "my widget!", width: 100, height: 1
 const op = unrealPlan(odd, () => undefined);
 assert.equal(op.blueprint, "/Game/Bediz/my_widget_/WBP_my_widget_");
 assert.deepEqual(op.steps.filter((s) => s.tool === "AddWidget").map((s) => s.save), ["SizeBox", "a_b", "a_b_"]);
+// TextBlock.font: ueAsset yoksa hata; varsa fontObject (Ad.Ad biçimine tamamlanır)
+const fw = WidgetSchema.parse({ id: "ft", width: 100, height: 40, root: { id: "R", type: "CanvasPanel", children: [{ id: "T", type: "TextBlock", text: "x", font: "cinzel", children: [] }] } });
+assert.throws(() => unrealPlan(fw, () => undefined), /UE Font asset yolu yok/);
+const fp = unrealPlan(fw, () => undefined, { fonts: () => "/Game/UI/Fonts/Cinzel_Font" });
+assert.match(fp.steps.map((s) => String(s.arguments.values ?? "")).join(), /"fontObject":"\/Game\/UI\/Fonts\/Cinzel_Font\.Cinzel_Font"/);
 console.log("unreal-plan ok");

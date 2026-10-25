@@ -44,8 +44,8 @@ export async function renderWidget(widget: Widget, assets: Map<string, Asset>, b
     } else if (n.type === "TextBlock" && n.text) {
       const fs = n.fontSize ?? 16;
       // Yazı vektör yola çevrilir (Roboto Bold, UE'nin varsayılanı) ve rect'ine kırpılmaz (UMG gibi taşabilir); sadece canvas sınırında kırpılır.
-      const tw = Math.max(w, measureText(n.text, fs).w + 2);
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="${h}"><path d="${textPathData(n.text, 0, 0, fs)}" fill="${n.color ?? "#ffffff"}"/></svg>`;
+      const tw = Math.max(w, measureText(n.text, fs, n.font).w + 2);
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="${h}"><path d="${textPathData(n.text, 0, 0, fs, n.font)}" fill="${n.color ?? "#ffffff"}"/></svg>`;
       await clipped(await sharp(Buffer.from(svg)).png().toBuffer(), x, y, tw, h);
     }
   };

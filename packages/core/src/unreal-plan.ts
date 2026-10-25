@@ -30,6 +30,7 @@ export interface UnrealPlan {
 export interface PlanOptions {
   folder?: string; // varsayılan /Game/Bediz/<widget>
   sizeBox?: boolean; // kökü widget boyutunda SizeBox ile sar (varsayılan: widget.fullscreen değilse true; yoksa widget tüm alanı doldurur)
+  fonts?: (fontId: string) => string | undefined; // font kimliği → UE Font asset yolu (/Game/.../Ad); TextBlock.font için zorunlu
   verify?: boolean; // editörde açıp ekran görüntüsü alan isteğe bağlı adımlar ekle
 }
 
@@ -160,8 +161,15 @@ export function unrealPlan(widget: Widget, lookup: (assetId: string) => Asset | 
     }
     if (n.type === "Image") return { brush: { ...brushOf(n), ...(n.size ? { imageSize: { x: n.size.x, y: n.size.y } } : {}) } };
     if (n.type === "Border") return { background: brushOf(n) };
-    if (n.type === "TextBlock") return { text: n.text ?? "", font: { size: n.fontSize ?? 16 }, colorAndOpacity: { specifiedColor: linear(n.color ?? "#ffffff"), colorUseRule: "UseColor_Specified" } };
+    if (n.type === "TextBlock") return { text: n.text ?? "", font: { size: n.fontSize ?? 16, ...fontObject(n) }, colorAndOpacity: { specifiedColor: linear(n.color ?? "#ffffff"), colorUseRule: "UseColor_Specified" } };
     return {};
+  };
+
+  const fontObject = (n: Node) => {
+    if (!n.font) return {};
+    const path = opts.fonts?.(n.font);
+    if (!path) throw new Error(`font '${n.font}' için UE Font asset yolu yok (register_font ueAsset: UE'de .ttf'yi içe aktarıp yolunu ver)`);
+    return { fontObject: path.includes(".") ? path : `${path}.${path.split("/").pop()}` };
   };
 
   const visit = (n: Node, parent: Node | undefined) => {
