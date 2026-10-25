@@ -1,15 +1,14 @@
 import sharp from "sharp";
 import { layoutWidget, walk, type Asset, type Node, type Widget } from "@bediz/core";
 import { renderNineSlice } from "./render.js";
-
-const escapeXml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+import { measureText, textPathData } from "./text.js";
 
 /** Widget'ı layout'a göre PNG'ye çizer; canvas dışına taşan kısımlar kırpılır. */
 export async function renderWidget(widget: Widget, assets: Map<string, Asset>, background = "#2a2a32"): Promise<Buffer> {
   const rects = layoutWidget(widget, (id) => {
     const a = assets.get(id);
     return a && { w: a.width, h: a.height };
-  });
+  }, measureText);
   const W = widget.width, H = widget.height;
   const parts: sharp.OverlayOptions[] = [];
 
@@ -39,9 +38,9 @@ export async function renderWidget(widget: Widget, assets: Map<string, Asset>, b
       await clipped(fits ? await renderNineSlice(a, w, h) : await sharp(a.path).resize(w, h, { fit: "fill" }).png().toBuffer(), x, y, w, h);
     } else if (n.type === "TextBlock" && n.text) {
       const fs = n.fontSize ?? 16;
-      // Yazı rect'ine kırpılmaz (UMG gibi taşabilir); sadece canvas sınırında kırpılır.
-      const tw = Math.max(w, Math.ceil(n.text.length * fs));
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="${h}"><text x="0" y="${fs}" font-family="sans-serif" font-size="${fs}" fill="${n.color ?? "#ffffff"}">${escapeXml(n.text)}</text></svg>`;
+      // Yazı vektör yola çevrilir (Roboto Bold, UE'nin varsayılanı) ve rect'ine kırpılmaz (UMG gibi taşabilir); sadece canvas sınırında kırpılır.
+      const tw = Math.max(w, measureText(n.text, fs).w + 2);
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="${h}"><path d="${textPathData(n.text, 0, 0, fs)}" fill="${n.color ?? "#ffffff"}"/></svg>`;
       await clipped(await sharp(Buffer.from(svg)).png().toBuffer(), x, y, tw, h);
     }
   };

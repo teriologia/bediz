@@ -6,6 +6,7 @@ import {
 } from "@bediz/core";
 import { assets, getWidget, notify, widgets } from "./state.js";
 import { renderWidget } from "./render-scene.js";
+import { measureText } from "./text.js";
 
 const text = (v: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(v, null, 2) }] });
 const nodeType = z.enum(NODE_TYPES);
@@ -31,7 +32,7 @@ const view = (w: Widget) => {
   const rects = layoutWidget(w, (id) => {
     const a = assets.get(id);
     return a && { w: a.width, h: a.height };
-  });
+  }, measureText);
   const r = Math.round;
   const dump = (n: Node): unknown => {
     const { children, ...rest } = n;

@@ -2,15 +2,18 @@ import type { Margin, Node, Slot, Widget } from "./scene.js";
 
 export interface Rect { x: number; y: number; w: number; h: number }
 export type AssetSize = (assetId: string) => { w: number; h: number } | undefined;
+/** Metin ölçücü (gerçek font ölçüsü sunucudan enjekte edilir); verilmezse karakter başına 0.6×fontSize tahmini. */
+export type TextMeasure = (text: string, fontSize: number) => { w: number; h: number };
+const approxText: TextMeasure = (t, fs) => ({ w: Math.ceil(t.length * fs * 0.6), h: Math.ceil(fs * 1.25) });
 
 const ZERO: Margin = { left: 0, top: 0, right: 0, bottom: 0 };
 const pad = (s?: Slot) => s?.padding ?? ZERO;
 
 /**
  * Widget'ın her node'u için rect hesaplar (widget'ın sol üstü 0,0).
- * shortcut: yazı boyutu gerçek font ölçüsü değil, karakter başına 0.6×fontSize tahmini.
+ * Yazı boyutu measureText ile ölçülür (varsayılan: kaba tahmin).
  */
-export function layoutWidget(widget: Widget, assetSize: AssetSize): Map<string, Rect> {
+export function layoutWidget(widget: Widget, assetSize: AssetSize, measureText: TextMeasure = approxText): Map<string, Rect> {
   const out = new Map<string, Rect>();
 
   const measure = (n: Node): { w: number; h: number } => {
@@ -20,10 +23,7 @@ export function layoutWidget(widget: Widget, assetSize: AssetSize): Map<string, 
         const s = n.brush && assetSize(n.brush.asset);
         return s ?? { w: 0, h: 0 };
       }
-      case "TextBlock": {
-        const fs = n.fontSize ?? 16;
-        return { w: Math.ceil((n.text ?? "").length * fs * 0.6), h: Math.ceil(fs * 1.25) };
-      }
+      case "TextBlock": return measureText(n.text ?? "", n.fontSize ?? 16);
       case "Border": return n.children[0] ? outer(n.children[0]) : { w: 0, h: 0 };
       case "HorizontalBox": return fold(n, (a, b) => a + b, Math.max);
       case "VerticalBox": return fold(n, Math.max, (a, b) => a + b);
