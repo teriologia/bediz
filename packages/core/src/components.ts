@@ -76,13 +76,17 @@ export function buttonRecipe(input: ButtonInput): ComponentRecipe & { states: Re
   };
   const designs = [...BUTTON_STATES, ...(o.selected ? (["selected"] as const) : [])].map(make);
   const states = Object.fromEntries(BUTTON_STATES.map((s) => [s, `${id}_${s}`])) as Record<(typeof BUTTON_STATES)[number], string>;
+  const widget = buttonWidget(id, states, { width: w, height: h, label: o.label ?? "Button", fontSize: o.fontSize ?? 22, color: o.textColor ?? look.text });
+  return { theme, designs, widget, states, ...(o.selected ? { selected: `${id}_selected` } : {}) };
+}
 
-  const widget = WidgetSchema.parse({ id, width: w, height: h, root: { id: "Root", type: "CanvasPanel", children: [
+/** Dört durumlu Button widget'ı (etiketli, widget boyutunu dolduran); hazır tarifler ve türetilmiş (serbest tasarım) durumlar aynı yapıyı kullanır. */
+export function buttonWidget(id: string, states: Record<(typeof BUTTON_STATES)[number], string>, o: { width: number; height: number; label: string; fontSize: number; color: string }): Widget {
+  return WidgetSchema.parse({ id, width: o.width, height: o.height, root: { id: "Root", type: "CanvasPanel", children: [
     { id: "Button", type: "Button", brush: { asset: states.normal }, slot: full,
       states: { hovered: { asset: states.hovered }, pressed: { asset: states.pressed }, disabled: { asset: states.disabled } },
-      children: [{ id: "Label", type: "TextBlock", text: o.label ?? "Button", fontSize: o.fontSize ?? 22, color: o.textColor ?? look.text, slot: { hAlign: "Center", vAlign: "Center" }, children: [] }] },
+      children: [{ id: "Label", type: "TextBlock", text: o.label, fontSize: o.fontSize, color: o.color, slot: { hAlign: "Center", vAlign: "Center" }, children: [] }] },
   ] } });
-  return { theme, designs, widget, states, ...(o.selected ? { selected: `${id}_selected` } : {}) };
 }
 
 // ---------------------------------------------------------------- İLERLEME ÇUBUĞU

@@ -14,6 +14,7 @@ import { registerComponentTools } from "./component-tools.js";
 import { registerScreenTools } from "./screen-tools.js";
 import { registerFontTools } from "./font-tools.js";
 import { registerKitTools } from "./kit-tools.js";
+import { registerDeriveTools } from "./derive-tools.js";
 
 // Proje dosyası: BEDIZ_PROJECT, yoksa çalışma klasöründeki bediz.project.json.
 // shortcut: her değişiklikte tüm dosya yeniden yazılır; büyük projelerde artımlı yazıma geç.
@@ -90,5 +91,6 @@ registerComponentTools(server);
 registerScreenTools(server);
 registerFontTools(server);
 registerKitTools(server);
+registerDeriveTools(server);
 
 await server.connect(new StdioServerTransport());
