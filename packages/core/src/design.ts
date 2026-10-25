@@ -77,7 +77,7 @@ export const LayerSchema = z.discriminatedUnion("kind", [
     kind: z.literal("gem"), cx: num, cy: num, size: num.positive(), color: Color,
     shape: z.enum(["diamond", "round", "hex"]).optional(), setting: z.enum(["gold", "none"]).optional() }).strict(),
   // Köşe süsü: kıvrımlı bıçaklar (+ orta kabartma). fill/stroke/effects her parçaya uygulanır. Boyut slice marjını aşmamalı (gerilmesin).
-  z.object({ ...common, kind: z.literal("corners"), style: z.enum(["blade"]), size: num.positive(), inset: num.min(0).optional(),
+  z.object({ ...common, kind: z.literal("corners"), style: z.enum(["blade", "scroll", "claw"]), size: num.positive(), inset: num.min(0).optional(),
     which: z.array(z.enum(["tl", "tr", "bl", "br"])).min(1).optional(), studs: z.boolean().optional() }).strict(),
   // Açık uçlu çizgi (çatlak, tel, oyuk): stroke zorunlu; closed=true ise kapanır.
   z.object({ ...common, kind: z.literal("line"), points: z.array(z.tuple([num, num])).min(2), closed: z.boolean().optional() }).strict(),
@@ -87,6 +87,9 @@ export const LayerSchema = z.discriminatedUnion("kind", [
     length: num.positive().optional(), seed: z.number().int().min(0).max(9999).optional(), color: Color.optional(), width: num.positive().max(8).optional(),
     highlight: z.boolean().optional(),
     direction: num.optional(), spread: num.positive().max(6.3).optional() }).strict(), // direction (rad): çatlakları bir yöne hizalar; spread: sapma (varsayılan 0.8)
+  // Perçin: points sol üst köşeye göre (px), 4 köşeye aynalanır. Varsayılan: kubbeli altın (bevel ile gerçek kubbe gölgesi).
+  z.object({ ...common, kind: z.literal("rivets"), points: z.array(z.tuple([num, num])).min(1), size: num.positive().max(48),
+    which: z.array(z.enum(["tl", "tr", "bl", "br"])).min(1).optional() }).strict(),
 ]);
 export type Layer = z.infer<typeof LayerSchema>;
 
@@ -199,7 +202,7 @@ function boxPath(x: number, y: number, w: number, h: number, r = 0, c = 0): stri
   return `M${fmt(x + r)},${fmt(y)} H${fmt(x + w - r)} ${a} ${fmt(x + w)},${fmt(y + r)} V${fmt(y + h - r)} ${a} ${fmt(x + w - r)},${fmt(y + h)} H${fmt(x + r)} ${a} ${fmt(x)},${fmt(y + h - r)} V${fmt(y + r)} ${a} ${fmt(x + r)},${fmt(y)} Z`;
 }
 
-export type Shape = Exclude<Layer, { kind: "gem" | "corners" | "cracks" }>;
+export type Shape = Exclude<Layer, { kind: "gem" | "corners" | "cracks" | "rivets" }>;
 
 function geometry(l: Shape, W: number, H: number): { d: string; evenodd: boolean } {
   switch (l.kind) {
@@ -262,22 +265,58 @@ const cubic = (p0: Pt, p1: Pt, p2: Pt, p3: Pt, n = 10): Pt[] => Array.from({ len
   return [u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
     u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]] as Pt;
 });
-// "blade" birim şekilleri (160x160 kutu, sol üst köşe orijin): bir bıçak (diğeri köşegende aynalanır), orta diken, orta kabartma.
+// Birim şekiller 160x160 kutuda, sol üst köşe orijin. "_b" parçası köşegende aynalanır (x↔y).
+const swap = (pts: Pt[]): Pt[] => pts.map(([x, y]) => [y, x] as Pt);
 const BLADE: Pt[] = [[28, 14], ...cubic([28, 14], [70, 10], [118, 14], [158, 30]), ...cubic([158, 30], [112, 34], [84, 52], [74, 88]), ...cubic([74, 88], [62, 58], [46, 46], [26, 44])];
 const THORN: Pt[] = [[56, 72], [106, 106], [72, 56]];
 const STUD: Pt[] = [[44, 26], [62, 44], [44, 62], [26, 44]];
 
+/** İnceliği azalan, sona doğru içe kıvrılan sarmal (volüt) şerit: orta çizgi + yan kaydırma ile çokgen. */
+function scrollShape(): Pt[] {
+  const P: Pt[] = [[22, 50], [52, 52], [86, 32], [118, 32]], C: Pt = [118, 58], center: Pt[] = [P[0], ...cubic(P[0], P[1], P[2], P[3], 24)];
+  for (let k = 1; k <= 48; k++) { const f = k / 48, th = -Math.PI / 2 + f * 3 * Math.PI, r = 26 - f * 20; center.push([C[0] + r * Math.cos(th), C[1] + r * Math.sin(th)]); }
+  const left: Pt[] = [], right: Pt[] = [], n = center.length;
+  center.forEach(([x, y], i) => {
+    const [ax, ay] = center[Math.max(0, i - 1)], [bx, by] = center[Math.min(n - 1, i + 1)], len = Math.hypot(bx - ax, by - ay) || 1;
+    const nx = -(by - ay) / len, ny = (bx - ax) / len, w = (17 - 12 * (i / (n - 1))) / 2;
+    left.push([x + nx * w, y + ny * w]); right.push([x - nx * w, y - ny * w]);
+  });
+  return [...left, ...right.reverse()];
+}
+const SCROLL = scrollShape();
+const CLAW_A: Pt[] = [[40, 18], ...cubic([40, 18], [80, 14], [116, 22], [152, 46]), ...cubic([152, 46], [112, 36], [78, 36], [42, 42])];
+const CLAW_C: Pt[] = [[30, 56], ...cubic([30, 56], [62, 58], [90, 78], [108, 108]), ...cubic([108, 108], [78, 90], [58, 62], [56, 30])];
+const ORNAMENTS: Record<"blade" | "scroll" | "claw", [string, Pt[]][]> = {
+  blade: [["horn_a", BLADE], ["horn_b", swap(BLADE)], ["thorn", THORN]],
+  scroll: [["scroll_a", SCROLL], ["scroll_b", swap(SCROLL)]],
+  claw: [["claw_a", CLAW_A], ["claw_b", swap(CLAW_A)], ["claw_c", CLAW_C]],
+};
+
+const CORNERS = ["tl", "tr", "bl", "br"] as const;
+/** Sol üst köşeye göre (x,y) noktasını istenen köşeye aynalar. */
+const toCorner = (corner: string, x: number, y: number, W: number, H: number): Pt => [corner[1] === "r" ? W - x : x, corner[0] === "b" ? H - y : y];
+
 function expandCorners(c: Extract<Layer, { kind: "corners" }>, W: number, H: number): Layer[] {
   const k = c.size / 160, inset = c.inset ?? 0, out: Layer[] = [];
-  const parts: [string, Pt[]][] = [["horn_a", BLADE], ["horn_b", BLADE.map(([x, y]) => [y, x] as Pt)], ["thorn", THORN], ...(c.studs === false ? [] : [["stud", STUD] as [string, Pt[]]])];
-  for (const corner of c.which ?? ["tl", "tr", "bl", "br"]) {
+  const parts = [...ORNAMENTS[c.style], ...(c.studs === false ? [] : [["stud", STUD] as [string, Pt[]]])];
+  for (const corner of c.which ?? CORNERS) {
     for (const [name, pts] of parts) {
       out.push({ id: `${c.id}__${corner}_${name}`, kind: "polygon", fill: c.fill, stroke: c.stroke, effects: c.effects, opacity: c.opacity,
-        points: pts.map(([x, y]) => {
-          const px = inset + x * k, py = inset + y * k;
-          return [corner[1] === "r" ? W - px : px, corner[0] === "b" ? H - py : py] as Pt;
-        }) });
+        points: pts.map(([x, y]) => toCorner(corner, inset + x * k, inset + y * k, W, H)) });
     }
+  }
+  return out;
+}
+
+function expandRivets(r: Extract<Layer, { kind: "rivets" }>, W: number, H: number): Layer[] {
+  const rad = r.size / 2, out: Layer[] = [];
+  for (const corner of r.which ?? CORNERS) {
+    r.points.forEach(([x, y], i) => {
+      const [cx, cy] = toCorner(corner, x, y, W, H);
+      out.push({ id: `${r.id}__${corner}_${i}`, kind: "ellipse", cx, cy, rx: rad, ry: rad, opacity: r.opacity,
+        fill: r.fill ?? { kind: "material", preset: "gold", scale: 2 }, stroke: r.stroke ?? { color: "#1a1008", width: 1 },
+        effects: r.effects ?? [{ kind: "bevel", depth: Math.max(0.5, Math.min(20, rad * 0.9)), size: Math.min(12, rad) }, { kind: "shadow", dx: 0.8, dy: 1.5, blur: 1.5, opacity: 0.6 }] });
+    });
   }
   return out;
 }
@@ -311,8 +350,8 @@ export function expandLayers(d: Design): Shape[] {
   const out: Shape[] = [];
   for (const l of d.layers) {
     if (l.hidden) continue;
-    const subs: Layer[] = l.kind === "gem" ? expandGem(l) : l.kind === "corners" ? expandCorners(l, d.width, d.height) : l.kind === "cracks" ? expandCracks(l) : [l];
-    for (const s of subs) if (!s.hidden && s.kind !== "gem" && s.kind !== "corners" && s.kind !== "cracks") out.push(s);
+    const subs: Layer[] = l.kind === "gem" ? expandGem(l) : l.kind === "corners" ? expandCorners(l, d.width, d.height) : l.kind === "cracks" ? expandCracks(l) : l.kind === "rivets" ? expandRivets(l, d.width, d.height) : [l];
+    for (const s of subs) if (!s.hidden && s.kind !== "gem" && s.kind !== "corners" && s.kind !== "cracks" && s.kind !== "rivets") out.push(s);
   }
   return out;
 }
