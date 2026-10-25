@@ -81,6 +81,7 @@ export function registerDesignTools(server: McpServer) {
           "Katmanlar alttan üste çizilir (dizideki sıra).",
           "Altın çerçeve: ring + texture gold + bevel + hafif shadow; altına koyu ring ile dış çizgi ekle.",
           "frame9 slice ≥ çerçeve kalınlığı + köşe yarıçapı. Ortada 64px+ düz bölge bırak.",
+          "frame9'u göstereceğin boyutta çiz (width/height = nihai boyut; dar bir tuvali 5× germek malzeme dokusunu uzatıp bulandırır: taş/metal 'sıkılmış' görünür). Tam ekran çerçeve için 1280×720 gibi gerçek boyutta çiz, preview_stretch ile kontrol et; büyük boyutta çizim birkaç sn sürer. create_container bunu kendisi yapar.",
           "Süs/mücevhere frame9'a koyma: gerilir. Ayrı sprite yap, widget'ta ortala.",
           "Kendi (yaratıcı) buton tasarımını çizdiysen: derive_button_states ile hover/pressed/disabled hâllerini türet ve çalışan Button widget'ı al; kanatlı/süslü gerilmeyen butonlar için slice verme (sabit boyutlu Image olur).",
           "Tek çağrıda hazır container için create_container; sonra katmanları update_layer ile inceltebilirsin.",

@@ -116,6 +116,9 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
   // Süs pah kırık köşenin dışına taşmasın diye içeri alınır; slice marjı süsü kapsar (yoksa gerilir).
   const orn = p.chamfer ? Math.round(c0 * 0.5) : 2;
   const m = Math.max(t + 14, p.ornaments ? p.cornerSize + orn + 2 : 0), S = 2 * m + 96;
+  // Çerçeve tuvali, göstereceği boyuta eşitlenir (gerilme yok): dar tuvali 5× germek dokuyu uzatıp bulandırır, bu kaynak çözünürlüğü sınırı (dokuyu önceden sıkıştırmak
+  // yatayda pikselleşme verdi). Tuval en az S; piksel bütçesi (≈1.1 MP) aşılırsa eski kompakt tuval + gerilme.
+  const CW = Math.max(S, p.width), CH = Math.max(S, p.height), exact = CW * CH <= 1_100_000, FW = exact ? CW : S, FH = exact ? CH : S;
   // İnce altın çerçeve, geniş koyu bant (PC oyunu oranı); dış kontur 1 px.
   const o = 1, g = Math.max(3, Math.round(t * 0.24)), rim = Math.max(2, Math.round(t * 0.1)), sl = t - g - rim;
   // Köşe biçimi: pah ya da yuvarlak; iç halkalarda eşit kalınlık için küçülür (inset o = dış altın başlangıcı).
@@ -125,12 +128,13 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
   // Çatlaklar sadece bantlarda: her köşede üst/alt bant boyunca yatay, yan bant boyunca dikey birer çatlak.
   const cw = m - 12, b0 = o + g + 3, bh = Math.max(4, sl - 6), cracks: Record<string, unknown>[] = [];
   [[1, 1], [-1, 1], [1, -1], [-1, -1]].forEach(([sx, sy], k) => {
-    const at = (x0: number, y0: number, w: number, h: number) => ({ x: sx > 0 ? x0 : S - x0 - w, y: sy > 0 ? y0 : S - y0 - h, w, h });
+    const at = (x0: number, y0: number, w: number, h: number) => ({ x: sx > 0 ? x0 : FW - x0 - w, y: sy > 0 ? y0 : FH - y0 - h, w, h });
     cracks.push({ id: `crack_h${k}`, kind: "cracks", ...at(8, b0, cw, bh), count: 1, length: Math.round(m * 0.5), seed: 11 + k, direction: 0 });
     cracks.push({ id: `crack_v${k}`, kind: "cracks", ...at(b0, 8, bh, cw), count: 1, length: Math.round(m * 0.5), seed: 21 + k, direction: Math.PI / 2 });
   });
 
-  const bg = DesignSchema.parse({ id: `${id}_bg`, kind: "tile", width: 256, height: 256, layers: [
+  const BT = p.width * p.height > 300_000 ? 512 : 256; // büyük panelde döşeme tekrarı belli olmasın
+  const bg = DesignSchema.parse({ id: `${id}_bg`, kind: "tile", width: BT, height: BT, layers: [
     { id: "ground", kind: "box", inset: 0, fill: { kind: "material", preset: p.background, pattern: p.pattern, ...(ramps ? { colors: ramps.ground } : {}), seed: 5, wear: p.wear * 0.8 } },
     ...(p.dim > 0 ? [{ id: "dim", kind: "box", inset: 0, fill: { kind: "solid", color: "#000000", opacity: p.dim } }] : []),
   ] });
@@ -145,7 +149,7 @@ export function containerRecipe(input: ContainerInput): ContainerRecipe {
     { id: "line", kind: "ring", inset: 1, thickness: 2, ...corner(1), fill: { kind: "solid", color: line, opacity: 0.85 } },
     { id: "line2", kind: "ring", inset: 7, thickness: 1, ...corner(7), fill: { kind: "solid", color: line, opacity: 0.4 } },
   ];
-  const frame = DesignSchema.parse({ id: `${id}_frame`, kind: "frame9", width: S, height: S, slice: { left: m, top: m, right: m, bottom: m }, layers: p.style === "ghost" ? ghostLayers : [
+  const frame = DesignSchema.parse({ id: `${id}_frame`, kind: "frame9", width: FW, height: FH, slice: { left: m, top: m, right: m, bottom: m }, layers: p.style === "ghost" ? ghostLayers : [
     { id: "outline", kind: "ring", inset: 0, thickness: t + o + 3, ...corner(0), fill: { kind: "solid", color: "#120b05" } },
     { id: "gold_outer", kind: "ring", inset: o, thickness: g, ...corner(o), fill: metal(3),
       effects: [{ kind: "bevel", depth: 4, size: Math.max(2, Math.round(g * 0.6)) }, { kind: "shadow", dx: 0, dy: 2, blur: 4, opacity: 0.7 }] },

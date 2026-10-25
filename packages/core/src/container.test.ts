@@ -9,7 +9,12 @@ assert.deepEqual(a, containerRecipe({ id: "p" }));
 assert.equal(a.theme, "gold-stone");
 const m = a.frame.slice!.left;
 assert.ok(m >= a.resolved.cornerSize + 2, "slice marjı süsü kapsamalı (yoksa gerilir)");
-assert.equal(a.frame.width, 2 * m + 96);
+// çerçeve tuvali göstereceği boyuta eşit (gerilme yok); piksel bütçesi aşılırsa kompakt 2m+96 tuvale düşer
+assert.equal(a.frame.width, Math.max(2 * m + 96, a.resolved.width));
+assert.equal(a.frame.height, Math.max(2 * m + 96, a.resolved.height));
+const big = containerRecipe({ id: "big", width: 2048, height: 1600 });
+assert.equal(big.frame.width, 2 * big.frame.slice!.left + 96, "bütçe aşılınca kompakt tuval");
+assert.equal(big.frame.width, big.frame.height);
 assert.equal(a.widget.root.children.map((c) => c.id).join(), "Background,Shade,Frame,Gem");
 // shade:false derinlik katmanını kaldırır; dim zemin tasarımına karartma katmanı ekler (0 ise eklemez)
 const ns = containerRecipe({ id: "ns", shade: false, dim: 0 });
