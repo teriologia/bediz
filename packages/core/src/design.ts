@@ -68,6 +68,8 @@ export const EffectSchema = z.discriminatedUnion("kind", [
   // Bulanıklık: katmanın son hâlini (tüm efektlerden sonra, maskeden önce) gaussian bulanıklaştırır; radius = sigma px. Yumuşak ışık, sis, derinlik.
   z.object({ kind: z.literal("blur"), radius: z.number().min(0.3).max(80) }).strict(),
   // distort: katmanı gürültüyle kaydırır (yırtık/aşınmış/el yapımı kenar). amount en büyük kayma px, scale gürültü öbek boyu px (varsayılan 10); PNG hattında, blur gibi efektlerden sonra uygulanır.
+  // adjust: renk ayarı (katmanın son hâlinde; alfa korunur). brightness/contrast/saturation -1..1 (0 = değişmez), hue -180..180 derece. PNG hattında uygulanır.
+  z.object({ kind: z.literal("adjust"), brightness: z.number().min(-1).max(1).optional(), contrast: z.number().min(-1).max(1).optional(), saturation: z.number().min(-1).max(1).optional(), hue: z.number().min(-180).max(180).optional() }).strict(),
   z.object({ kind: z.literal("distort"), amount: z.number().min(0.3).max(40), scale: z.number().min(2).max(200).optional(), seed: z.number().int().optional() }).strict(),
   z.object({ kind: z.literal("glow"), blur: z.number().min(0).max(40).optional(), color: Color.optional(), opacity: z.number().min(0).max(1).optional() }).strict(),
   // Film greni: şeklin içine koyulaştıran ince gürültü (amount 0..1, size = tane sıklığı çarpanı). Sadece SVG hattında; `material` dolgulu katmanlarda yok sayılır.
@@ -247,6 +249,7 @@ function effectStep(e: Effect, cur: string, out: string): string {
         <feBlend in="${out}_m" in2="${cur}" mode="multiply" result="${out}_x"/>
         <feComposite in="${out}_x" in2="SourceAlpha" operator="in" result="${out}"/>`;
     }
+    case "adjust": // renk ayarı PNG hattında uygulanır; SVG zincirinde geçiş
     case "distort": // kenar bozma PNG hattında uygulanır; SVG zincirinde geçiş
     case "blur": // bulanıklık katman sonunda PNG hattında uygulanır; SVG zincirinde geçiş
       return `<feOffset in="${cur}" dx="0" dy="0" result="${out}"/>`;

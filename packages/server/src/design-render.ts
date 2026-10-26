@@ -117,6 +117,13 @@ async function shapeParts(d: Design, l: Shape, cache: Map<string, Float32Array>,
     const moved = displaceRgba(data, info.width, info.height, dist.amount, dist.scale ?? 10, dist.seed ?? 1);
     parts = [{ input: await sharp(Buffer.from(moved), { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer() }];
   }
+  for (const adj of l.effects?.filter((e) => e.kind === "adjust") ?? []) if (adj.kind === "adjust") {
+    let img = sharp(await transparent(d).composite(parts).png().toBuffer());
+    const c = 1 + (adj.contrast ?? 0); // kontrast: 128 etrafında ölçekle, alfa dokunulmaz
+    if (c !== 1) img = sharp(await img.linear([c, c, c, 1], [128 * (1 - c), 128 * (1 - c), 128 * (1 - c), 0]).png().toBuffer());
+    img = img.modulate({ brightness: 1 + (adj.brightness ?? 0), saturation: Math.max(0, 1 + (adj.saturation ?? 0)), hue: adj.hue ?? 0 });
+    parts = [{ input: await img.png().toBuffer() }];
+  }
   if (!l.mask) return parts;
   const m = await maskValues(d, l.mask, cache, stack), { data, info } = await transparent(d).composite(parts).raw().toBuffer({ resolveWithObject: true });
   for (let i = 0; i < m.length; i++) data[i * 4 + 3] = Math.round(data[i * 4 + 3] * m[i]);

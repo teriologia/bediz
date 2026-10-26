@@ -85,6 +85,19 @@ for (const [W, H, mode] of [[121, 60, "x"], [60, 71, "y"], [61, 61, "xy"]] as co
   for (let y = 30; y < 66; y++) { let x = 0; while (x < 96 && a[(y * 96 + x) * 4 + 3] < 128) x++; edge.add(x); }
   assert.ok(edge.size >= 3, `kenar düz kalmamalı: ${edge.size} farklı konum`);
 }
+// adjust: parlaklık/doygunluk/ton/kontrast; alfa korunur, 0 değişmez
+{
+  const mk = (adj: object, color = "#c06030") => DesignSchema.parse({ id: "aj", kind: "sprite", width: 16, height: 16, layers: [
+    { id: "a", kind: "box", x: 0, y: 0, w: 8, h: 16, fill: { kind: "solid", color }, effects: [{ kind: "adjust", ...adj }] }] });
+  const px = async (d: ReturnType<typeof mk>, x = 2) => [...(await sharp(await renderDesignPng(d)).ensureAlpha().raw().toBuffer()).subarray((8 * 16 + x) * 4, (8 * 16 + x) * 4 + 4)];
+  const base = await px(mk({})), dark = await px(mk({ brightness: -0.5 })), grey = await px(mk({ saturation: -1 })), hue = await px(mk({ hue: 120 })), hi = await px(mk({ contrast: 0.8 }));
+  assert.ok(dark[0] < base[0] - 30, `parlaklık -0.5 koyulaştırır: ${base[0]} → ${dark[0]}`);
+  assert.ok(Math.abs(grey[0] - grey[1]) < 12 && Math.abs(grey[1] - grey[2]) < 12, `doygunluk -1 gri: ${grey}`);
+  assert.ok(hue[1] > hue[0], `ton +120 turuncuyu yeşile çevirir: ${hue}`);
+  assert.ok(hi[0] > base[0] && hi[2] < base[2], `kontrast açığı açar koyuyu koyultur: ${base} → ${hi}`);
+  assert.equal((await px(mk({ brightness: -0.5 }), 12))[3], 0, "saydam alan saydam kalır");
+  assert.equal(base[3], 255);
+}
 // mask: şekil içine kırpma (alfa), gradyan luma maskesi (+ invert), gizli maske çıktıda görünmez, iç içe maske, motif açılımı
 {
   const Wm = 64, Hm = 64, red = { kind: "solid", color: "#ff0000" }, base = { kind: "box", inset: 0, fill: red };
