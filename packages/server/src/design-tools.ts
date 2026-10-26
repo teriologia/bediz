@@ -4,7 +4,7 @@ import sharp from "sharp";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
-  CONTAINER_THEMES, ContainerInputSchema, DESIGN_KINDS, DesignSchema, LayerSchema, SliceSchema, containerRecipe, compileDesign, materialDefaults, presetInfo, toUnrealBrush,
+  CONTAINER_THEMES, SCENE_RECIPES, ContainerInputSchema, DESIGN_KINDS, DesignSchema, LayerSchema, SliceSchema, containerRecipe, compileDesign, materialDefaults, presetInfo, toUnrealBrush,
   type Design,
 } from "@bediz/core";
 import { assets, designs, getDesign, notify, projectDir, widgets } from "./state.js";
@@ -77,6 +77,7 @@ export function registerDesignTools(server: McpServer) {
         },
         fills: "solid{color,opacity} · linear{angle,stops} · radial{stops,cx?,cy?,r?} (durak rengi #RRGGBBAA olabilir: saydama sönen vinyet/ışık) · material{preset,pattern?,colors?,scale?,seed?,wear?(0..1: kenar aşınması+kir)} · noise{style: clouds|grain|cells|streaks, scale?, contrast?, seed?, colors?[koyu→açık]} (prosedürel gürültü rampası: overlay/multiply/screen blend + mask ile kir, pas lekesi, gren, ışık) · texture{...eski}",
         effects: "bevel{depth,size,azimuth,highlight} · shadow{dx,dy,blur,color,opacity} · innerShadow · glow · grain{amount,size,seed} (koyulaştıran ince gren, material dışı katmanlarda). blur{radius} (katmanın son hâlini gaussian bulanıklaştırır: yumuşak ışık, sis, mum parıltısı; maskeden önce uygulanır). distort{amount,scale?,seed?} (katmanı gürültüyle kaydırır: yırtık, aşınmış, el yapımı kenar; amount px kayma, scale öbek boyu, varsayılan 10; blur'dan sonra, maskeden önce). adjust{brightness,contrast,saturation (-1..1), hue (-180..180°)} (katmanın renk ayarı, alfa korunur; solgun/koyu/sıcak ton, iki katmanı uyumlamak için; distort'tan sonra, maskeden önce). Sıra önemli (üstten uygulanır). Katman blend: multiply|screen|overlay|soft-light|lighten|darken. Tasarım symmetry: x|y|xy (yalnız sol/üst yarıyı yaz, kalanı aynalanır; tile'da olmaz).",
+        sceneRecipes: Object.fromEntries(Object.entries(SCENE_RECIPES).map(([k, v]) => [k, { about: v.about, layers: v.layers }])), // kopyala-uyarla katman dizileri (1280x720); sahne/atmosfer için
         tips: [
           "UI'ı TEK RESİM olarak çizme (tam ekran sprite + üstüne yazı): sekme, buton, çerçeve resmin içinde kalır, tıklanamaz, durumu/9-slice'ı olmaz, başka ekranda kullanılamaz. Her parça ayrı bileşen olsun: çerçeve/panel = frame9, buton = create_button ya da derive_button_states, madalyon/süs = ayrı sprite; hepsini widget'ta Image/Button node'larıyla yerleştir.",
           "Yazıyı ortalamak için sol koordinatı tahmin etme (kayar): ya Overlay içine TextBlock koy ve slot'una hAlign:Center (+ vAlign:Center) ver ya da canvas slotunda anchors orta noktası (minX=maxX=0.5) + alignment {x:0.5} + autoSize:true kullan. Aralıklı sütunlar için HorizontalBox/VerticalBox kullan, tek tek offset yazma.",
@@ -90,6 +91,7 @@ export function registerDesignTools(server: McpServer) {
           "frame9'u göstereceğin boyutta çiz (width/height = nihai boyut; dar bir tuvali 5× germek malzeme dokusunu uzatıp bulandırır: taş/metal 'sıkılmış' görünür). Tam ekran çerçeve için 1280×720 gibi gerçek boyutta çiz, preview_stretch ile kontrol et; büyük boyutta çizim birkaç sn sürer. create_container bunu kendisi yapar.",
           "Süs/mücevhere frame9'a koyma: gerilir. Ayrı sprite yap, widget'ta ortala.",
           "Kendi (yaratıcı) buton tasarımını çizdiysen: derive_button_states ile hover/pressed/disabled hâllerini türet ve çalışan Button widget'ı al; kanatlı/süslü gerilmeyen butonlar için slice verme (sabit boyutlu Image olur).",
+          "SAHNE/ATMOSFER (arka plan illüstrasyonu, ay, kale, sis): sceneRecipes içindeki hazır katman dizilerini add_layer ile kopyalayıp uyarla. Sıra: gökyüzü → ay+halo → uzak dağ → mist → yakın dağ/kule → mist → vinyet. Düz renkli, halosuz, sissiz sahne yapay durur; kule/kale için taş dokusunu gövdeye basma, koyu siluet + sıcak ışıklı pencere (glow) kullan. Çok detaylı resim gerekiyorsa görsel modelle üret, import_image + image katmanı kullan.",
           "Tek çağrıda hazır container için create_container; sonra katmanları update_layer ile inceltebilirsin.",
         ],
       })],
