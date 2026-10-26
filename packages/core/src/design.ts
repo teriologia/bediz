@@ -103,6 +103,9 @@ export const LayerSchema = z.discriminatedUnion("kind", [
   // Tekrar: çokgen çizgi (points) boyunca her step px'te bir süs öğesi (stud nokta, diamond, tick, dash, chevron), çizgi yönüne döner (rotate:false → sabit).
   // Tüm öğeler tek yol katmanı olur (tek geçiş: malzeme dolgusunda da hızlı). Kenar boyunca perçin/boncuk/diş dizisi, ayraç çizgileri için.
   z.object({ ...common, kind: z.literal("repeat"), style: z.enum(REPEATS), points: z.array(z.tuple([num, num])).min(2), step: num.min(3), size: num.positive().max(200), margin: num.min(0).optional(), rotate: z.boolean().optional(), jitter: z.number().min(0).max(0.8).optional() }).strict(),
+  // Fırça darbesi: points boyunca yumuşatılmış, kalınlığı değişen dolu şerit. width tepe kalınlığı px; taper uç incelmesi (0..0.5, çizgi boyunun oranı; 0 = künt uç);
+  // wobble 0..1 kalınlık dalgalanması (elle çizilmiş his). Tek yol katmanı olur; yumuşak kenar için blur efekti, doku için malzeme/noise dolgusu + mask kullan.
+  z.object({ ...common, kind: z.literal("brush"), points: z.array(z.tuple([num, num])).min(2).max(60), width: num.positive().max(300), taper: z.number().min(0).max(0.5).optional(), wobble: z.number().min(0).max(1).optional(), seed: z.number().int().optional() }).strict(),
   // Motif: hazır süs (chevrons «» oklar, wings kanat, crest tepe süsü, rune mühür halkası). (cx,cy) merkez, size yükseklik px;
   // mirror: tuval ortasına göre karşı tarafa aynalı kopya (kanat/ok çifti). fill/stroke/effects her parçaya uygulanır.
   z.object({ ...common, kind: z.literal("motif"), style: z.enum(MOTIFS), cx: num, cy: num, size: num.positive(), mirror: z.boolean().optional() }).strict(),
@@ -265,7 +268,7 @@ function boxPath(x: number, y: number, w: number, h: number, r = 0, c = 0): stri
   return `M${fmt(x + r)},${fmt(y)} H${fmt(x + w - r)} ${a} ${fmt(x + w)},${fmt(y + r)} V${fmt(y + h - r)} ${a} ${fmt(x + w - r)},${fmt(y + h)} H${fmt(x + r)} ${a} ${fmt(x)},${fmt(y + h - r)} V${fmt(y + r)} ${a} ${fmt(x + r)},${fmt(y)} Z`;
 }
 
-export type Shape = Exclude<Layer, { kind: "gem" | "corners" | "cracks" | "rivets" | "motif" | "repeat" }>;
+export type Shape = Exclude<Layer, { kind: "gem" | "corners" | "cracks" | "rivets" | "motif" | "repeat" | "brush" }>;
 
 /** Kapalı çokgeni Catmull-Rom → kübik Bézier'e çevirir; tension 0..1, `sharp` köşelerde teğet sıfırlanır (köşe korunur). */
 function smoothPath(P: [number, number][], tension: number, sharp: Set<number>): string {
@@ -408,6 +411,36 @@ function expandRepeat(r: Extract<Layer, { kind: "repeat" }>): Layer[] {
   return [{ id: `${r.id}__items`, kind: "path", d: d.trim(), fill: r.fill, stroke: r.stroke, effects: r.effects, opacity: r.opacity, blend: r.blend } as Layer];
 }
 
+// ---------- fırça darbesi ----------
+function expandBrush(b: Extract<Layer, { kind: "brush" }>): Layer[] {
+  const P = b.points, tp = b.taper ?? 0.25, wob = b.wobble ?? 0, seed = b.seed ?? 1;
+  // Catmull-Rom ile yumuşatılmış örnekler
+  const pts: Pt[] = [];
+  for (let i = 0; i < P.length - 1; i++) {
+    const p0 = P[Math.max(0, i - 1)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(P.length - 1, i + 2)];
+    for (let k = 0; k < 10; k++) {
+      const t = k / 10, t2 = t * t, t3 = t2 * t;
+      pts.push([0, 1].map((a) => 0.5 * (2 * p1[a] + (p2[a] - p0[a]) * t + (2 * p0[a] - 5 * p1[a] + 4 * p2[a] - p3[a]) * t2 + (3 * p1[a] - 3 * p2[a] + p3[a] - p0[a]) * t3)) as Pt);
+    }
+  }
+  pts.push(P[P.length - 1]);
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const total = cum[cum.length - 1];
+  if (total < 1e-6) return [];
+  const left: Pt[] = [], right: Pt[] = [];
+  pts.forEach((p, i) => {
+    const a = pts[Math.max(0, i - 1)], c = pts[Math.min(pts.length - 1, i + 1)];
+    const tx = c[0] - a[0], ty = c[1] - a[1], tl = Math.hypot(tx, ty) || 1, nx = -ty / tl, ny = tx / tl, u = cum[i] / total;
+    const edge = tp > 0 ? Math.min(1, Math.min(u, 1 - u) / tp) : 1, ease = Math.sin((edge * Math.PI) / 2);
+    const q = cum[i] / 8, q0 = Math.floor(q), nz = 2 * (hash2(q0, seed, 5) * (1 - (q - q0)) + hash2(q0 + 1, seed, 5) * (q - q0)); // 8 px aralıklı yumuşak değer gürültüsü
+    const w = (b.width / 2) * (tp > 0 ? ease : 1) * (1 + wob * 0.5 * (nz - 1));
+    left.push([p[0] + nx * w, p[1] + ny * w]); right.push([p[0] - nx * w, p[1] - ny * w]);
+  });
+  const d = "M" + [...left, ...right.reverse()].map(([x, y]) => `${f2(x)},${f2(y)}`).join(" L") + " Z";
+  return [{ id: `${b.id}__stroke`, kind: "path", d, fill: b.fill, stroke: b.stroke, effects: b.effects, opacity: b.opacity, blend: b.blend } as Layer];
+}
+
 // ---------- köşe süsü ----------
 type Pt = [number, number];
 const cubic = (p0: Pt, p1: Pt, p2: Pt, p3: Pt, n = 10): Pt[] => Array.from({ length: n }, (_, k) => {
@@ -511,9 +544,9 @@ export function expandLayers(d: Design): Shape[] {
   const out: Shape[] = [];
   for (const l of d.layers) {
     if (l.hidden) continue;
-    const subs: Layer[] = l.kind === "gem" ? expandGem(l) : l.kind === "corners" ? expandCorners(l, d.width, d.height) : l.kind === "cracks" ? expandCracks(l) : l.kind === "rivets" ? expandRivets(l, d.width, d.height) : l.kind === "motif" ? expandMotif(l, d.width) : l.kind === "repeat" ? expandRepeat(l) : [l];
+    const subs: Layer[] = l.kind === "gem" ? expandGem(l) : l.kind === "corners" ? expandCorners(l, d.width, d.height) : l.kind === "cracks" ? expandCracks(l) : l.kind === "rivets" ? expandRivets(l, d.width, d.height) : l.kind === "motif" ? expandMotif(l, d.width) : l.kind === "repeat" ? expandRepeat(l) : l.kind === "brush" ? expandBrush(l) : [l];
     for (const s of subs) if (l.mask && !s.mask) s.mask = l.mask; // açılımlar (motif, köşe, gem...) ana katmanın maskesini devralır
-    for (const s of subs) if (!s.hidden && s.kind !== "gem" && s.kind !== "corners" && s.kind !== "cracks" && s.kind !== "rivets" && s.kind !== "motif" && s.kind !== "repeat") out.push(s);
+    for (const s of subs) if (!s.hidden && s.kind !== "gem" && s.kind !== "corners" && s.kind !== "cracks" && s.kind !== "rivets" && s.kind !== "motif" && s.kind !== "repeat" && s.kind !== "brush") out.push(s);
   }
   return out;
 }

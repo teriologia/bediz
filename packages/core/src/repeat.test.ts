@@ -30,4 +30,15 @@ assert.ok(fx > fy, `rotate:false → yatay kalır: ${fx} x ${fy}`);
 for (const style of REPEATS) compileDesign(DesignSchema.parse({ id: "s", kind: "sprite", width: 100, height: 40, layers: [{ id: "x", kind: "repeat", style, points: [[5, 20], [95, 20]], step: 12, size: 8, fill: { kind: "solid", color: "#ffffff" } }] }));
 assert.throws(() => DesignSchema.parse({ id: "s", kind: "sprite", width: 100, height: 40, layers: [{ id: "x", kind: "repeat", style: "nope", points: [[0, 0], [9, 9]], step: 12, size: 8 }] }));
 assert.throws(() => DesignSchema.parse({ id: "s", kind: "sprite", width: 100, height: 40, layers: [{ id: "x", kind: "repeat", style: "stud", points: [[0, 0], [9, 9]], step: 1, size: 8 }] }));
+// brush: tek yol; uçlar sivri (taper), orta tam kalınlık; taper:0 künt uç
+const br = (extra: object) => expandLayers(DesignSchema.parse({ id: "b", kind: "sprite", width: 200, height: 100, layers: [
+  { id: "s", kind: "brush", points: [[10, 50], [100, 50], [190, 50]], width: 20, fill: { kind: "solid", color: "#ffffff" }, ...extra }] }));
+const ys = (extra: object) => [...(br(extra)[0] as unknown as { d: string }).d.matchAll(/,(-?[\d.]+)/g)].map((m) => +m[1]);
+assert.equal(br({}).length, 1, "fırça tek yol katmanı");
+const mid = ys({}), span = Math.max(...mid) - Math.min(...mid);
+assert.ok(span > 19 && span < 21, `orta kalınlık ~20: ${span}`);
+const tip = (extra: object) => { const d = (br(extra)[0] as unknown as { d: string }).d, first = d.match(/^M(-?[\d.]+),(-?[\d.]+) L(-?[\d.]+),/)!; return Math.abs(+first[2] - 50); };
+assert.ok(tip({}) < 1, "taper: uç sivri");
+assert.ok(tip({ taper: 0 }) > 9, "taper 0: künt uç");
+assert.throws(() => DesignSchema.parse({ id: "b", kind: "sprite", width: 9, height: 9, layers: [{ id: "s", kind: "brush", points: [[0, 0]], width: 4 }] }));
 console.log("repeat ok");
