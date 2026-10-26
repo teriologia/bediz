@@ -83,14 +83,45 @@ async function mirrorHalves(png: Buffer, w: number, h: number, mode: "x" | "y" |
   return cur;
 }
 
+type MaskOf = NonNullable<Shape["mask"]>;
+const transparent = (d: Design) => sharp({ create: { width: d.width, height: d.height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } });
+
+/** Tek şeklin katman parçaları (maske uygulanmış). Maskeli katman tuvale çizilir, alfası maske değeriyle çarpılır, tek parça olarak döner. */
+async function shapeParts(d: Design, l: Shape, cache: Map<string, Float32Array>, stack: string[]): Promise<sharp.OverlayOptions[]> {
+  const parts = l.kind === "band" ? await bandLayer(d, l) : isMaterial(l) ? await materialLayer(d, l) : [{ input: await sharp(svgOf(d, l)).png().toBuffer() }];
+  if (!l.mask) return parts;
+  const m = await maskValues(d, l.mask, cache, stack), { data, info } = await transparent(d).composite(parts).raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < m.length; i++) data[i * 4 + 3] = Math.round(data[i * 4 + 3] * m[i]);
+  return [{ input: await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer() }];
+}
+
+/** Maske katmanını (gizli olsa da, kendi maskesi dahil) tuvale çizip 0..1 değerlere çevirir; önbellekli, döngü korumalı. */
+async function maskValues(d: Design, m: MaskOf, cache: Map<string, Float32Array>, stack: string[]): Promise<Float32Array> {
+  const key = `${m.layer}|${m.use ?? "alpha"}|${m.invert ? 1 : 0}`, hit = cache.get(key);
+  if (hit) return hit;
+  const ref = d.layers.find((x) => x.id === m.layer);
+  if (!ref || stack.includes(m.layer)) throw new Error(`maske katmanı çözülemedi: ${m.layer}`);
+  const parts: sharp.OverlayOptions[] = [];
+  for (const sh of expandLayers({ ...d, layers: [{ ...ref, hidden: false }] })) parts.push(...(await shapeParts(d, sh, cache, [...stack, m.layer])).map((p) => (sh.blend ? { ...p, blend: sh.blend } : p)));
+  const { data } = await transparent(d).composite(parts).raw().toBuffer({ resolveWithObject: true });
+  const out = new Float32Array(d.width * d.height);
+  for (let i = 0; i < out.length; i++) {
+    const a = data[i * 4 + 3] / 255, v = m.use === "luma" ? ((0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2]) / 255) * a : a;
+    out[i] = m.invert ? 1 - v : v;
+  }
+  cache.set(key, out);
+  return out;
+}
+
 /**
  * Tasarımı PNG'ye çizer. Katmanlar sırayla çizilir: `material` dolgulu olanlar CPU hattında, diğerleri SVG'de.
+ * `mask` verilen katman, başka bir katmanın alfası/parlaklığıyla çarpılır (gizli katman maske olarak kullanılabilir).
  * shortcut: her katman tuval boyutunda ayrı rasterlanır; çok katmanlı ve çok büyük (2048²) tasarımlarda yavaşlar.
  */
 export async function renderDesignPng(d: Design, background?: string): Promise<Buffer> {
-  const parts: sharp.OverlayOptions[] = [];
+  const parts: sharp.OverlayOptions[] = [], cache = new Map<string, Float32Array>();
   for (const l of expandLayers(d)) {
-    const layerParts = l.kind === "band" ? await bandLayer(d, l) : isMaterial(l) ? await materialLayer(d, l) : [{ input: await sharp(svgOf(d, l)).png().toBuffer() }];
+    const layerParts = await shapeParts(d, l, cache, []);
     parts.push(...layerParts.map((p) => (l.blend ? { ...p, blend: l.blend } : p)));
   }
   let img = sharp({ create: { width: d.width, height: d.height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite(parts);

@@ -75,4 +75,13 @@ assert.equal((sm().match(/ C/g) ?? []).length, 4);
 // köşe 0 keskin: ilk segmentin ilk kontrol noktası köşenin kendisi (10,10)
 assert.match(sm([0]), /M10,10 C10,10 /);
 assert.doesNotMatch(sm(), /M10,10 C10,10 /);
+// mask: var olan başka katmana referans; kendine, olmayan katmana ve döngüye izin yok; açılımlar (motif) ana katmanın maskesini devralır
+const mk = (layers: object[]) => DesignSchema.parse({ id: "mk", kind: "sprite", width: 32, height: 32, layers });
+const msq = { kind: "box", inset: 2, fill: { kind: "solid", color: "#ffffff" } };
+mk([{ id: "m", ...msq, hidden: true }, { id: "a", ...msq, mask: { layer: "m", use: "luma", invert: true } }]);
+assert.throws(() => mk([{ id: "a", ...msq, mask: { layer: "a" } }]), /kendi maskesi/);
+assert.throws(() => mk([{ id: "a", ...msq, mask: { layer: "yok" } }]), /maske katmanı yok/);
+assert.throws(() => mk([{ id: "a", ...msq, mask: { layer: "b" } }, { id: "b", ...msq, mask: { layer: "a" } }]), /döngü/);
+const mm = expandLayers(mk([{ id: "m", ...msq, hidden: true }, { id: "k", kind: "motif", style: "chevrons", cx: 16, cy: 16, size: 20, mirror: true, fill: { kind: "solid", color: "#ffffff" }, mask: { layer: "m" } }]));
+assert.ok(mm.length === 4 && mm.every((l) => l.mask?.layer === "m"), "motif parçaları maskeyi devralmalı");
 console.log("design ok");

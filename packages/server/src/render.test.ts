@@ -72,5 +72,32 @@ for (const [W, H, mode] of [[121, 60, "x"], [60, 71, "y"], [61, 61, "xy"]] as co
     assert.equal(a(x, Ho - 1 - y), a(x, y), "sol-alt aynalı");
   }
 }
+// mask: şekil içine kırpma (alfa), gradyan luma maskesi (+ invert), gizli maske çıktıda görünmez, iç içe maske, motif açılımı
+{
+  const Wm = 64, Hm = 64, red = { kind: "solid", color: "#ff0000" }, base = { kind: "box", inset: 0, fill: red };
+  const px = async (layers: object[]) => {
+    const { data } = await sharp(await renderDesignPng(DesignSchema.parse({ id: "mk", kind: "sprite", width: Wm, height: Hm, layers }))).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    return (x: number, y: number) => [...data.subarray((y * Wm + x) * 4, (y * Wm + x) * 4 + 4)];
+  };
+  const left = { id: "m", kind: "box", x: 0, y: 0, w: 32, h: Hm, hidden: true, fill: { kind: "solid", color: "#ffffff" } };
+  const clip = await px([left, { id: "a", ...base, mask: { layer: "m" } }]);
+  assert.equal(clip(10, 30)[3], 255, "maske içinde görünür");
+  assert.equal(clip(50, 30)[3], 0, "maske dışında şeffaf; gizli maske çıktıda yok");
+  const inv = await px([left, { id: "a", ...base, mask: { layer: "m", invert: true } }]);
+  assert.equal(inv(10, 30)[3], 0); assert.equal(inv(50, 30)[3], 255);
+  // luma: soldan sağa siyah→beyaz gradyan; alfa soldan sağa artar, invert azalır
+  const grad = { id: "g", kind: "box", inset: 0, hidden: true, fill: { kind: "linear", angle: 0, stops: [[0, "#000000"], [1, "#ffffff"]] } };
+  const lu = await px([grad, { id: "a", ...base, mask: { layer: "g", use: "luma" } }]);
+  assert.ok(lu(4, 30)[3] < 40 && lu(60, 30)[3] > 215 && lu(32, 30)[3] > 100 && lu(32, 30)[3] < 155, `luma geçişi: ${lu(4, 30)[3]} ${lu(32, 30)[3]} ${lu(60, 30)[3]}`);
+  const li = await px([grad, { id: "a", ...base, mask: { layer: "g", use: "luma", invert: true } }]);
+  assert.ok(li(4, 30)[3] > 215 && li(60, 30)[3] < 40);
+  // iç içe: b, a ile maskeli; c, b ile maskeli → c yalnız a ∩ b'de
+  const top = { id: "a", kind: "box", x: 0, y: 0, w: Wm, h: 40, hidden: true, fill: { kind: "solid", color: "#ffffff" } };
+  const nest = await px([top, { id: "b", kind: "box", inset: 0, hidden: true, fill: { kind: "solid", color: "#ffffff" }, mask: { layer: "a" } }, left.id === "m" ? { ...left, id: "l" } : left, { id: "c", ...base, mask: { layer: "b" } }]);
+  assert.equal(nest(10, 20)[3], 255, "a içinde"); assert.equal(nest(10, 50)[3], 0, "a dışında (iç içe maske)");
+  // maskesiz referans katman görünür kalır (hidden verilmediyse)
+  const vis = await px([{ id: "m", ...base, x: 0, y: 0, w: 20, h: 20, inset: undefined, fill: { kind: "solid", color: "#00ff00" } }, { id: "a", ...base, mask: { layer: "m" } }]);
+  assert.deepEqual(vis(5, 5).slice(0, 3), [255, 0, 0], "maskelenen katman üstte kırmızı"); assert.equal(vis(40, 40)[3], 0);
+}
 assert.throws(() => DesignSchema.parse({ id: "t", kind: "tile", width: 16, height: 16, symmetry: "x", layers: [] }), /symmetry/);
 console.log("render ok");

@@ -80,6 +80,7 @@ export function registerDesignTools(server: McpServer) {
           "Yazıyı ortalamak için sol koordinatı tahmin etme (kayar): ya Overlay içine TextBlock koy ve slot'una hAlign:Center (+ vAlign:Center) ver ya da canvas slotunda anchors orta noktası (minX=maxX=0.5) + alignment {x:0.5} + autoSize:true kullan. Aralıklı sütunlar için HorizontalBox/VerticalBox kullan, tek tek offset yazma.",
           "Etiket butonun içine sığmalı: genişliği metin ölçüsünden büyük ver (silüetli butonlarda uç bölgeleri iç alanı daraltır) ve önizlemede taşma/çakışma var mı kontrol et.",
           "Gotik/dikenli/kuleli çerçeve için create_ornate_frame (hazır, tek çağrı: dikenler, köşe kuleleri, mücevher, orta süs; dönen inner içerik alanı). Daha özel istiyorsan aynı yapıyı band + repeat(thorn) + polygon/path + symmetry:xy ile kendin kur.",
+          "MASKE (Photoshop'taki katman maskesi/kırpma): her katmana mask:{layer:<başka katman id>, use?:alpha|luma, invert?} ver; katman yalnızca o katmanın boyalı olduğu yerde görünür. Bir şekli maske yapıp dokuyu içine kırp (hidden:true ile maske çıktıda görünmez); siyah→beyaz gradyan/radial (hidden) + use:luma ile geçişli maske: ışık havuzu, kenarlarda kir, solma. Maske katmanı yukarıdaki katmanlardan biri olmalı (üst düzey id), döngü yok.",
           "Katmanlar alttan üste çizilir (dizideki sıra).",
           "Altın çerçeve: ring + texture gold + bevel + hafif shadow; altına koyu ring ile dış çizgi ekle.",
           "frame9 slice ≥ çerçeve kalınlığı + köşe yarıçapı. Ortada 64px+ düz bölge bırak.",

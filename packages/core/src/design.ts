@@ -63,6 +63,9 @@ export type Effect = z.infer<typeof EffectSchema>;
 const Stroke = z.object({ color: Color, width: z.number().positive().max(64), opacity: z.number().min(0).max(1).optional() }).strict();
 const num = z.number();
 
+// Maske: bu katman yalnızca `layer` (aynı tasarımdaki başka bir üst düzey katman) boyalı olan yerde görünür.
+// use: alpha (varsayılan: maskenin şeffaflığı) | luma (parlaklık × alfa: siyah→beyaz gradyan geçişli maske). invert: tersi. Maske katmanı hidden:true ile çıktıdan gizlenir ama maske olarak çalışır.
+export const MaskSchema = z.object({ layer: z.string().min(1), use: z.enum(["alpha", "luma"]).optional(), invert: z.boolean().optional() }).strict();
 const common = {
   id: z.string().min(1),
   name: z.string().optional(),
@@ -72,6 +75,7 @@ const common = {
   opacity: z.number().min(0).max(1).optional(),
   blend: z.enum(BLEND_MODES).optional(), // alttaki katmanlarla karışım (PNG hattında; compileDesign tek başına SVG'de uygulamaz)
   hidden: z.boolean().optional(),
+  mask: MaskSchema.optional(),
 };
 // Kutu geometrisi: ya inset (tuvalin kenarından içeri) ya da x/y/w/h.
 const boxGeo = { inset: num.min(0).optional(), x: num.optional(), y: num.optional(), w: num.positive().optional(), h: num.positive().optional(),
@@ -96,7 +100,7 @@ export const LayerSchema = z.discriminatedUnion("kind", [
   z.object({ ...common, kind: z.literal("path"), d: z.string().min(2).max(4000).regex(PATH_CHARS, "d yalnızca SVG yol komutları, sayı ve ayraç içerebilir").regex(/^\s*[Mm]/, "d bir M komutuyla başlamalı"), evenodd: z.boolean().optional() }).strict(),
   z.object({ ...common, kind: z.literal("ellipse"), cx: num, cy: num, rx: num.positive(), ry: num.positive() }).strict(),
   // Hazır mücevher: faset + (isteğe bağlı) altın yuva. fill/effects kullanmaz.
-  z.object({ id: z.string().min(1), name: z.string().optional(), opacity: z.number().min(0).max(1).optional(), hidden: z.boolean().optional(),
+  z.object({ id: z.string().min(1), name: z.string().optional(), opacity: z.number().min(0).max(1).optional(), hidden: z.boolean().optional(), mask: MaskSchema.optional(),
     kind: z.literal("gem"), cx: num, cy: num, size: num.positive(), color: Color,
     shape: z.enum(["diamond", "round", "hex"]).optional(), setting: z.enum(["gold", "none"]).optional(),
     settingColors: z.array(Color).min(2).max(6).optional() }).strict(), // settingColors: yuva metalinin koyu→açık rampası (varsayılan altın)
@@ -106,7 +110,7 @@ export const LayerSchema = z.discriminatedUnion("kind", [
   // Açık uçlu çizgi (çatlak, tel, oyuk): stroke zorunlu; closed=true ise kapanır.
   z.object({ ...common, kind: z.literal("line"), points: z.array(z.tuple([num, num])).min(2), closed: z.boolean().optional() }).strict(),
   // Çatlak üretici: x,y,w,h bölgesine count adet dallanan çatlak (koyu iz + ince parlak kenar). Aynı seed → aynı çatlaklar.
-  z.object({ id: z.string().min(1), name: z.string().optional(), opacity: z.number().min(0).max(1).optional(), hidden: z.boolean().optional(),
+  z.object({ id: z.string().min(1), name: z.string().optional(), opacity: z.number().min(0).max(1).optional(), hidden: z.boolean().optional(), mask: MaskSchema.optional(),
     kind: z.literal("cracks"), x: num, y: num, w: num.positive(), h: num.positive(), count: z.number().int().min(1).max(40).optional(),
     length: num.positive().optional(), seed: z.number().int().min(0).max(9999).optional(), color: Color.optional(), width: num.positive().max(8).optional(),
     highlight: z.boolean().optional(),
@@ -135,6 +139,16 @@ export const DesignSchema = z.object({
   } else if (d.slice) ctx.addIssue({ code: "custom", message: `${d.kind} tasarımında slice olmaz` });
   const ids = d.layers.map((l) => l.id);
   if (new Set(ids).size !== ids.length) ctx.addIssue({ code: "custom", message: "katman id'leri benzersiz olmalı" });
+  // maske referansları: var olan başka bir katman, döngü yok
+  const byId = new Map(d.layers.map((l) => [l.id, l]));
+  for (const l of d.layers) {
+    if (!l.mask) continue;
+    if (!byId.has(l.mask.layer)) ctx.addIssue({ code: "custom", message: `${l.id}: maske katmanı yok: ${l.mask.layer}` });
+    else if (l.mask.layer === l.id) ctx.addIssue({ code: "custom", message: `${l.id}: katman kendi maskesi olamaz` });
+    else for (let cur = byId.get(l.mask.layer), n = 0; cur?.mask; cur = byId.get(cur.mask.layer), n++) {
+      if (cur.mask.layer === l.id || n > d.layers.length) { ctx.addIssue({ code: "custom", message: `${l.id}: maske döngüsü` }); break; }
+    }
+  }
 });
 export type Design = z.infer<typeof DesignSchema>;
 
@@ -483,6 +497,7 @@ export function expandLayers(d: Design): Shape[] {
   for (const l of d.layers) {
     if (l.hidden) continue;
     const subs: Layer[] = l.kind === "gem" ? expandGem(l) : l.kind === "corners" ? expandCorners(l, d.width, d.height) : l.kind === "cracks" ? expandCracks(l) : l.kind === "rivets" ? expandRivets(l, d.width, d.height) : l.kind === "motif" ? expandMotif(l, d.width) : l.kind === "repeat" ? expandRepeat(l) : [l];
+    for (const s of subs) if (l.mask && !s.mask) s.mask = l.mask; // açılımlar (motif, köşe, gem...) ana katmanın maskesini devralır
     for (const s of subs) if (!s.hidden && s.kind !== "gem" && s.kind !== "corners" && s.kind !== "cracks" && s.kind !== "rivets" && s.kind !== "motif" && s.kind !== "repeat") out.push(s);
   }
   return out;
