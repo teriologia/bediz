@@ -72,6 +72,19 @@ for (const [W, H, mode] of [[121, 60, "x"], [60, 71, "y"], [61, 61, "xy"]] as co
     assert.equal(a(x, Ho - 1 - y), a(x, y), "sol-alt aynalı");
   }
 }
+// distort: düz kenar bozulur (kenar boyunca alfa farklı), aynı seed aynı sonuç, merkez dolu kalır, maske yine keskin
+{
+  const mk = (extra: object) => DesignSchema.parse({ id: "dz", kind: "sprite", width: 96, height: 96, layers: [
+    { id: "a", kind: "box", x: 20, y: 20, w: 56, h: 56, fill: { kind: "solid", color: "#ffffff" }, effects: [{ kind: "distort", amount: 6, scale: 8, ...extra }] }] });
+  const raw = async (d: ReturnType<typeof mk>) => (await sharp(await renderDesignPng(d)).ensureAlpha().raw().toBuffer());
+  const a = await raw(mk({})), b = await raw(mk({})), c = await raw(mk({ seed: 9 }));
+  assert.ok(a.equals(b), "aynı seed aynı sonuç");
+  assert.ok(!a.equals(c), "farklı seed farklı kenar");
+  assert.equal(a[(48 * 96 + 48) * 4 + 3], 255, "merkez dolu");
+  const edge = new Set<number>(); // sol kenarın gerçek x konumu satırdan satıra değişmeli
+  for (let y = 30; y < 66; y++) { let x = 0; while (x < 96 && a[(y * 96 + x) * 4 + 3] < 128) x++; edge.add(x); }
+  assert.ok(edge.size >= 3, `kenar düz kalmamalı: ${edge.size} farklı konum`);
+}
 // mask: şekil içine kırpma (alfa), gradyan luma maskesi (+ invert), gizli maske çıktıda görünmez, iç içe maske, motif açılımı
 {
   const Wm = 64, Hm = 64, red = { kind: "solid", color: "#ff0000" }, base = { kind: "box", inset: 0, fill: red };

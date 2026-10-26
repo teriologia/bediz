@@ -55,6 +55,25 @@ function vnoise(x: number, y: number, px: number, py: number, seed: number): num
   return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
 }
 
+/**
+ * RGBA tamponunu gürültü alanıyla kaydırır (displacement): yırtık/aşınmış kenar. amount en büyük kayma px, scale gürültü öbek boyu px; iki oktav (ince oktav kenara tırtık verir).
+ * Örnekleme premultiplied çift doğrusal: kenarda koyu halka oluşmaz. Aynı seed aynı sonucu verir.
+ */
+export function displaceRgba(src: Uint8Array, w: number, h: number, amount: number, scale: number, seed: number): Uint8Array {
+  const out = new Uint8Array(src.length), N = 1 << 20, s = Math.max(1, scale);
+  const f = (x: number, y: number, sd: number) => (vnoise(x / s, y / s, N, N, sd) - 0.5) * 1.3 + (vnoise((x * 2.7) / s, (y * 2.7) / s, N, N, sd + 7) - 0.5) * 0.7;
+  const px = (x: number, y: number, c: number) => { const i = (clamp(y, 0, h - 1) * w + clamp(x, 0, w - 1)) * 4; return src[i + c] * (c === 3 ? 1 : src[i + 3] / 255); };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const sx = x + f(x, y, seed) * 2 * amount, sy = y + f(x + 311, y + 177, seed + 3) * 2 * amount;
+    const x0 = Math.floor(sx), y0 = Math.floor(sy), fx = sx - x0, fy = sy - y0, o = (y * w + x) * 4;
+    const v = (c: number) => (px(x0, y0, c) * (1 - fx) + px(x0 + 1, y0, c) * fx) * (1 - fy) + (px(x0, y0 + 1, c) * (1 - fx) + px(x0 + 1, y0 + 1, c) * fx) * fy;
+    const a = v(3);
+    out[o + 3] = Math.round(a);
+    if (a > 0.5) for (let c = 0; c < 3; c++) out[o + c] = Math.round(clamp((v(c) * 255) / a, 0, 255));
+  }
+  return out;
+}
+
 /** u,v ∈ [0,1) tuval koordinatı; px,py ilk oktavdaki hücre sayısı. */
 function fbm(u: number, v: number, px: number, py: number, oct: number, seed: number): number {
   let s = 0, amp = 0.5, tot = 0;

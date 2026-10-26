@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import {
-  compileDesign, edgeDistance, expandLayers, makeSeamless, noiseRgba, shadeMaterial, withInnerShadow, withShadow,
+  compileDesign, displaceRgba, edgeDistance, expandLayers, makeSeamless, noiseRgba, shadeMaterial, withInnerShadow, withShadow,
   type Design, type Shape,
 } from "@bediz/core";
 
@@ -111,6 +111,12 @@ async function shapeParts(d: Design, l: Shape, cache: Map<string, Float32Array>,
   // bulanıklık tüm efektlerden sonra, maskeden önce (Photoshop'ta filtre sonra katman maskesi gibi: maske kenarı keskin kalır)
   const blur = l.effects?.find((e) => e.kind === "blur");
   if (blur?.kind === "blur") parts = [{ input: await sharp(await transparent(d).composite(parts).png().toBuffer()).blur(Math.max(0.3, blur.radius)).png().toBuffer() }]; // composite sharp'ta bulanıklıktan SONRA çalışır: önce tuvale çiz, sonra bulanıklaştır
+  const dist = l.effects?.find((e) => e.kind === "distort");
+  if (dist?.kind === "distort") {
+    const { data, info } = await transparent(d).composite(parts).raw().toBuffer({ resolveWithObject: true });
+    const moved = displaceRgba(data, info.width, info.height, dist.amount, dist.scale ?? 10, dist.seed ?? 1);
+    parts = [{ input: await sharp(Buffer.from(moved), { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer() }];
+  }
   if (!l.mask) return parts;
   const m = await maskValues(d, l.mask, cache, stack), { data, info } = await transparent(d).composite(parts).raw().toBuffer({ resolveWithObject: true });
   for (let i = 0; i < m.length; i++) data[i * 4 + 3] = Math.round(data[i * 4 + 3] * m[i]);
