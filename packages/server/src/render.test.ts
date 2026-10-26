@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
-import { DesignSchema, silhouettePath } from "@bediz/core";
+import { DesignSchema, ornateFrameRecipe, silhouettePath } from "@bediz/core";
 import { renderDesignPng } from "./design-render.js";
 import { renderNineSlice, tileTo } from "./render.js";
 
@@ -58,6 +58,19 @@ for (const [W, H, mode] of [[121, 60, "x"], [60, 71, "y"], [61, 61, "xy"]] as co
   const rim = px(100, 6 + 5); // üst kenardan ~5 px: metal bandı
   assert.ok(rim[0] > rim[2] + 30, `metal bandı altın tonlu olmalı: ${rim}`);
   assert.ok(px(100, 7)[0] < 60 || px(100, 6)[0] < 60, "en dış bant koyu çizgi");
+}
+// gotik çerçeve: orta saydam, bant dolu, kule çerçeve dışına taşar, dört köşede aynı (xy simetri)
+{
+  const r = ornateFrameRecipe({ id: "ofx", width: 480, height: 360, spire: 40, thickness: 20 }), Wo = 480, Ho = 360, M = 54;
+  const { data } = await sharp(await renderDesignPng(r.designs[0])).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const a = (x: number, y: number) => data[(y * Wo + x) * 4 + 3];
+  assert.equal(a(Wo / 2, Ho / 2), 0, "orta saydam");
+  assert.ok(a(Wo / 2 - 60, M + 8) > 200, "üst bant dolu");
+  for (const [x, y] of [[M, M - 20], [M - 20, M + 1]]) {
+    assert.ok(a(x, y) > 100, `kule dışarı taşmalı (${x},${y})`);
+    assert.equal(a(Wo - 1 - x, y), a(x, y), "sağ-üst aynalı");
+    assert.equal(a(x, Ho - 1 - y), a(x, y), "sol-alt aynalı");
+  }
 }
 assert.throws(() => DesignSchema.parse({ id: "t", kind: "tile", width: 16, height: 16, symmetry: "x", layers: [] }), /symmetry/);
 console.log("render ok");

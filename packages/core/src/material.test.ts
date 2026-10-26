@@ -12,7 +12,7 @@ assert.notDeepEqual(a, shadeMaterial({ w: 64, h: 64, mask: ones(64, 64), fill: {
 
 // dikişsizlik: sarma komşuluğu (N-1,0), iç komşu çiftlerinin %90 diliminden belirgin büyük olmamalı
 // (tek çifte bakmak keskin harç çizgilerinde gürültülü; 2x2 döşeme görsel olarak da doğrulandı)
-for (const [preset, pattern] of [["stone", "flagstone"], ["stone", "blocks"], ["slate", "flagstone"], ["gold", undefined], ["wood", undefined], ["leather", undefined], ["marble", undefined], ["carbon", undefined], ["cloth", undefined]] as const) {
+for (const [preset, pattern] of [["stone", "flagstone"], ["stone", "blocks"], ["slate", "flagstone"], ["gold", undefined], ["wood", undefined], ["leather", undefined], ["marble", undefined], ["carbon", undefined], ["cloth", undefined], ["papyrus", undefined], ["parchment", undefined]] as const) {
   const N = 128, t = shadeMaterial({ w: N, h: N, mask: ones(N, N), fill: { preset, pattern, seed: 2 }, tileable: true });
   const col = (x1: number, x2: number) => { let s = 0; for (let y = 0; y < N; y++) s += Math.abs(lum(t, x1, y, N) - lum(t, x2, y, N)); return s / N; };
   const row = (y1: number, y2: number) => { let s = 0; for (let x = 0; x < N; x++) s += Math.abs(lum(t, x, y1, N) - lum(t, x, y2, N)); return s / N; };
@@ -68,7 +68,7 @@ assert.ok(Date.now() - t0 < 1500, `yavaş: ${Date.now() - t0}ms`);
   }
 }
 // yeni aileler: her önizleme tek düz renk değil (parlaklık çeşitliliği), NaN yok, özel renk rampası uygulanır, aynı tohum = aynı çıktı
-for (const preset of ["leather", "marble", "carbon", "cloth"] as const) {
+for (const preset of ["leather", "marble", "carbon", "cloth", "papyrus", "parchment"] as const) {
   const N = 96, run = (colors?: string[]) => shadeMaterial({ w: N, h: N, mask: ones(N, N), fill: { preset, seed: 5, colors }, tileable: true });
   const t = run();
   let mn = 255, mx = 0;
@@ -79,5 +79,19 @@ for (const preset of ["leather", "marble", "carbon", "cloth"] as const) {
   let r = 0, b = 0;
   for (let i = 0; i < N * N; i++) { r += red[i * 4]; b += red[i * 4 + 2]; }
   assert.ok(r > b * 2, `${preset}: colors rampası uygulanmalı`);
+}
+// kâğıt aileleri (papyrus/parchment): wear yaşlandırır — ortalama parlaklık düşer, kenar yanığı (kenar < merkez), wear 0 temiz kalır ve tileable'da kenar yanığı yok
+for (const preset of ["papyrus", "parchment"] as const) {
+  const N = 120, mask = new Float32Array(N * N);
+  for (let y = 6; y < N - 6; y++) for (let x = 6; x < N - 6; x++) mask[y * N + x] = 1;
+  const mean = (t: Uint8Array, f: (x: number, y: number) => boolean) => { let s = 0, n = 0; for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (f(x, y) && mask[y * N + x] > 0.5) { s += lum(t, x, y, N); n++; } return s / n; };
+  const clean = shadeMaterial({ w: N, h: N, mask, fill: { preset, seed: 4, wear: 0 } }), aged = shadeMaterial({ w: N, h: N, mask, fill: { preset, seed: 4, wear: 0.95 } });
+  const all = () => true, edge = (x: number, y: number) => Math.min(x, y, N - 1 - x, N - 1 - y) < 18, mid = (x: number, y: number) => Math.min(x, y, N - 1 - x, N - 1 - y) > 40;
+  assert.ok(mean(aged, all) < mean(clean, all) - 8, `${preset}: yaşlı daha koyu olmalı (${mean(aged, all).toFixed(1)} vs ${mean(clean, all).toFixed(1)})`);
+  assert.ok(mean(aged, edge) < mean(aged, mid) - 10, `${preset}: yaşlıda kenar yanığı (kenar ${mean(aged, edge).toFixed(1)} < orta ${mean(aged, mid).toFixed(1)})`);
+  assert.ok(Math.abs(mean(clean, edge) - mean(clean, mid)) < 14, `${preset}: temizde belirgin kenar koyulaşması yok`);
+  const tile = (wear: number) => shadeMaterial({ w: N, h: N, mask: ones(N, N), fill: { preset, seed: 4, wear }, tileable: true });
+  const tm = (t: Uint8Array, f: (x: number, y: number) => boolean) => { let s = 0, n = 0; for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (f(x, y)) { s += lum(t, x, y, N); n++; } return s / n; };
+  assert.ok(Math.abs(tm(tile(0.95), edge) - tm(tile(0.95), mid)) < 14, `${preset}: tileable'da kenar yanığı olmamalı (dikişsizlik)`);
 }
 console.log("material ok");

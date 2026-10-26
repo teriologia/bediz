@@ -1,10 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
-  DropdownInputSchema, InputInputSchema, PaletteSchema, registerPalette, ScrollbarInputSchema, SliderInputSchema, TabsInputSchema, ToggleInputSchema, TooltipInputSchema, UiKitInputSchema,
+  DropdownInputSchema, InputInputSchema, OrnateFrameInputSchema, PaletteSchema, registerPalette, ornateFrameRecipe, ScrollbarInputSchema, SliderInputSchema, TabsInputSchema, ToggleInputSchema, TooltipInputSchema, UiKitInputSchema,
   dropdownRecipe, inputRecipe, scrollbarRecipe, sliderRecipe, tabsRecipe, toggleRecipe, tooltipRecipe, uiKitRecipe, type ComponentRecipe,
 } from "@bediz/core";
 import { brushes, content, find, install, sheet, variant } from "./component-tools.js";
 import { renderWidget } from "./render-scene.js";
+import sharp from "sharp";
 import { assets, notify, palettes } from "./state.js";
 import { measureText } from "./text.js";
 
@@ -76,6 +77,21 @@ export function registerKitTools(server: McpServer) {
   simple("create_dropdown", "Açılır liste: kapalı alan + ok, `open` ile açık liste paneli ve seçili satır vurgusu. Aç/kapa oyunda görünürlükle yapılır.", DropdownInputSchema.shape, dropdownRecipe as never);
   simple("create_scrollbar", "Dikey kaydırma çubuğu: oluk + başlık (+ hover varyantı); start/size oranları başlığın yerini ve boyunu verir. Kaydırma mantığı oyunun işi.", ScrollbarInputSchema.shape, scrollbarRecipe as never);
   simple("create_tooltip", "Bilgi balonu: çerçeveli panel + başlık + sarılmış gövde metni; yükseklik metin ölçüsünden hesaplanır.", TooltipInputSchema.shape, ((i: never) => tooltipRecipe(i, measureText)) as never);
+
+  server.tool(
+    "create_ornate_frame",
+    "Gotik dikenli çerçeve (tek sabit boyutlu görsel): koyu demir bant, kenar boyunca dışarı bakan kıvrık dikenler, köşe kuleleri (sivri uçlar + gövde + mücevher), üst/alt orta süs kulesi. " +
+    "Sol-üst çeyrek çizilip symmetry:xy ile aynalanır. Orta bölge saydam: paneli/arka planı çerçevenin ALTINA koy; dönüşteki `inner` içerik alanıdır (tuval px). " +
+    "width/height çerçevenin nihai boyutu (480..1920 × 360..1080; gerilmez, çizim boyuta göre 5-25 sn sürer), spire kule uzunluğu (çerçeve bu kadar boşlukla çizilir), thickness demir kalınlığı, " +
+    "thorns/thornSize/thornStep dikenler, accent mücevher+kakma rengi, metalColors demir rampası (koyu→açık), wear 0..1. theme/palet verirsen demir ve renkler ondan gelir.",
+    OrnateFrameInputSchema.shape,
+    async (input) => {
+      const r = ornateFrameRecipe(input);
+      const exported = await install(r);
+      const png = await sharp(await renderWidget(r.widget, assets, "#0a0a0c")).resize({ width: Math.min(960, r.widget.width) }).png().toBuffer();
+      return content({ theme: r.theme, widget: { id: r.widget.id, width: r.widget.width, height: r.widget.height }, inner: r.inner, assets: brushes(exported) }, png);
+    },
+  );
 
   server.tool(
     "create_ui_kit",

@@ -3,7 +3,7 @@
  * yapıyla (Voronoi taş/blok, fırçalı metal, gerçek kenar eğimi) üretir. Tüm gürültü periyodiktir: tile'lar dikişsizdir.
  */
 
-export const MATERIAL_PRESETS = ["stone", "slate", "gold", "silver", "bronze", "wood", "leather", "marble", "carbon", "cloth"] as const;
+export const MATERIAL_PRESETS = ["stone", "slate", "gold", "silver", "bronze", "wood", "leather", "marble", "carbon", "cloth", "papyrus", "parchment"] as const;
 export type MaterialPreset = (typeof MATERIAL_PRESETS)[number];
 export const STONE_PATTERNS = ["flagstone", "blocks", "rough", "fine"] as const;
 export type StonePattern = (typeof STONE_PATTERNS)[number];
@@ -18,7 +18,7 @@ export interface MaterialParams {
 }
 export interface Bevel { depth: number; size?: number; azimuth?: number } // depth/size px cinsinden kenar eğimi
 
-interface Def { family: "stone" | "metal" | "wood" | "leather" | "marble" | "weave"; ramp: string[]; amp: number; spec: number; pattern?: StonePattern; cells?: number; weaveCell?: number; twill?: boolean }
+interface Def { family: "stone" | "metal" | "wood" | "leather" | "marble" | "weave" | "paper"; ramp: string[]; amp: number; spec: number; pattern?: StonePattern; cells?: number; weaveCell?: number; twill?: boolean; paper?: "papyrus" | "skin" }
 const DEFS: Record<MaterialPreset, Def> = {
   stone: { family: "stone", ramp: ["#3e3a35", "#645f56", "#8b8374", "#a79e8d"], amp: 3, spec: 0.08, pattern: "flagstone" },
   slate: { family: "stone", ramp: ["#0b1013", "#18211f", "#26312f", "#38453f"], amp: 2.2, spec: 0.15, pattern: "flagstone", cells: 0.75 },
@@ -29,6 +29,8 @@ const DEFS: Record<MaterialPreset, Def> = {
   leather: { family: "leather", ramp: ["#1a0f0a", "#33200f", "#5a3a1c", "#80582b"], amp: 1.6, spec: 0.12 }, // taneli deri: küçük yuvarlak hücreler + kırışıklık çizgileri
   marble: { family: "marble", ramp: ["#1c1c22", "#4b4b55", "#a3a3ad", "#e8e8ee"], amp: 0.35, spec: 0.45 }, // damarlı cilalı mermer (colors ile siyah/yeşil mermer)
   carbon: { family: "weave", ramp: ["#040405", "#0e0f12", "#1b1d22", "#2e3139"], amp: 1.4, spec: 0.55, weaveCell: 5, twill: true }, // çapraz dokuma karbon fiber
+  papyrus: { family: "paper", ramp: ["#4a3418", "#8a6a3a", "#c4a468", "#e6d3a0"], amp: 0.9, spec: 0.02, paper: "papyrus" }, // çapraz şeritli lifli papirüs; wear: yaşlanma (leke, kenar yanığı, katlanma izi, benek)
+  parchment: { family: "paper", ramp: ["#5a4020", "#9a7a48", "#d2b886", "#efe0b8"], amp: 0.35, spec: 0.04, paper: "skin" }, // düzgün parşömen (hayvan derisi): bulutlu ton, ince damar ve gözenek
   cloth: { family: "weave", ramp: ["#1a0a10", "#3a1220", "#6a1f35", "#8f3550"], amp: 0.7, spec: 0.03, weaveCell: 3, twill: false }, // ince dokuma kumaş/kadife
 };
 export const materialDefaults = () => Object.fromEntries(MATERIAL_PRESETS.map((k) => [k, { colors: DEFS[k].ramp, pattern: DEFS[k].pattern }]));
@@ -259,6 +261,39 @@ function fields(def: Def, p: MaterialParams, w: number, h: number, dist?: Float3
       tone[i] = clamp(0.42 + thread * 0.3 + (fiber - 0.5) * 0.2 + (fold - 0.5) * 0.25);
       dark[i] = 0.68 + 0.32 * thread; sp[i] = def.spec * (0.35 + 0.65 * thread);
     }
+  } else if (def.family === "paper") {
+    // Yaşlanma wear (0..1) ile üretilir: leke bulutları, benek (foxing), katlanma izleri ve (tileable değilse) kenar yanığı.
+    const age = p.wear ?? 0, fx = rnd(w, 11), fy = rnd(h, 11);
+    const nvx = Math.max(2, rnd(w, 17 / sc)), nvy = Math.max(2, rnd(h, 17 / sc)); // papirüs şerit sayıları
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x, u = (x + 0.5) / w, v = (y + 0.5) / h;
+      let t: number, hh: number, dk = 1;
+      if (def.paper === "papyrus") {
+        // iki katman şerit: dikey ve yatay; yamalarla hangisinin üstte olduğu değişir. Şerit aralarında koyu dikiş.
+        const sv = u * nvx, sh = v * nvy, seamV = Math.abs(sv - Math.round(sv)), seamH = Math.abs(sh - Math.round(sh));
+        const fibV = vnoise(u * w / 2.2, v * h / 110, rnd(w, 2.2), rnd(h, 110), seed), fibH = vnoise(u * w / 110, v * h / 2.2, rnd(w, 110), rnd(h, 2.2), seed + 3);
+        const top = smooth(clamp((fbm(u, v, rnd(w, 120), rnd(h, 120), 3, seed + 9) - 0.3) / 0.22)); // çoğunlukla dikey şerit üstte, yer yer yatay katman görünür
+        const strip = hash2(Math.floor(top > 0.5 ? sv : sh), 7, seed) - 0.5; // şerit başına ton farkı
+        const fib = fibV * top + fibH * (1 - top), seam = Math.pow(1 - Math.min(1, (top * seamV + (1 - top) * seamH) * 5), 3);
+        t = clamp(0.6 + strip * 0.16 + (fib - 0.5) * 0.45 - seam * 0.18 + (fbm(u, v, rnd(w, 120), rnd(h, 120), 3, seed + 4) - 0.5) * 0.3);
+        hh = amp * ((fib - 0.5) * 0.9 - seam * 0.7); dk = 1 - seam * 0.12;
+      } else {
+        const cloud = fbm(u, v, rnd(w, 110), rnd(h, 110), 4, seed + 4), pore = fbm(u, v, rnd(w, 4), rnd(h, 4), 2, seed + 6);
+        const vein = Math.pow(1 - Math.abs(2 * fbm(u, v, rnd(w, 75), rnd(h, 75), 4, seed + 12) - 1), 9) * 0.55; // organik çatallanan damar (kıvrık, kesik)
+        t = clamp(0.66 + (cloud - 0.5) * 0.45 - vein * 0.12 + (pore - 0.5) * 0.12);
+        hh = amp * ((pore - 0.5) * 0.7 - vein * 0.35);
+      }
+      if (age > 0) {
+        const stain = smooth(clamp((fbm(u, v, rnd(w, 170), rnd(h, 170), 4, seed + 11) - 0.5) / 0.2)) * age;
+        const wf = worley(u, v, fx, fy, seed + 21), rad = 3 + wf.id * 7, spot = wf.id < 0.12 * age && wf.f1 * 11 < rad ? smooth(1 - (wf.f1 * 11) / rad) : 0; // benek: bazı hücrelerde yumuşak koyu leke
+        const jit = (fbm(u, v, 6, 6, 2, seed + 31) - 0.5) * 0.05, crease = Math.max(Math.exp(-Math.pow((u - 0.33 - jit) * w / 2.2, 2)), Math.exp(-Math.pow((u - 0.66 - jit) * w / 2.2, 2)), Math.exp(-Math.pow((v - 0.5 - jit) * h / 2.2, 2))) * age;
+        let burn = 0;
+        if (dist) { const ragged = 0.7 + 0.6 * fbm(u, v, rnd(w, 40), rnd(h, 40), 3, seed + 41); burn = Math.pow(clamp(1 - dist[i] / ((8 + age * 36) * ragged)), 1.6) * age; }
+        t = clamp(t - stain * 0.3 - spot * 0.45 - burn * 0.55 - crease * 0.1);
+        hh += -crease * 1.6 - spot * 0.2 - burn * 0.5; dk *= 1 - stain * 0.18 - spot * 0.3 - burn * 0.45 - crease * 0.22;
+      }
+      tone[i] = t; H[i] = hh; dark[i] = dk;
+    }
   } else { // wood
     const rings = Math.max(2, rnd(h, 18 / sc)), nxf = rnd(w, 60), nyf = Math.max(2, rnd(h, 1.3));
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -300,7 +335,7 @@ export function shadeMaterial(inp: MaterialInput): Uint8Array {
   const wrap = !!inp.tileable, blur = boxBlur(H, w, h, 5, wrap);
   const ix = (k: number, len: number) => (wrap ? mod(k, len) : clamp(k, 0, len - 1));
   const ramp = rampFn(inp.fill.colors ?? def.ramp), hi = ramp(1), out = new Uint8Array(n * 4);
-  const wear = inp.fill.wear ?? 0, wseed = (inp.fill.seed ?? 1) + 77;
+  const wear = def.family === "paper" ? 0 : inp.fill.wear ?? 0, wseed = (inp.fill.seed ?? 1) + 77;
   const wnx = Math.max(1, Math.round(w / 14)), wny = Math.max(1, Math.round(h / 14)), snx = Math.max(1, Math.round(w / 60)), sny = Math.max(1, Math.round(h / 60));
   const wearTone: [number, number, number] = def.family === "metal" ? ramp(0.97) : [226, 219, 202];
   

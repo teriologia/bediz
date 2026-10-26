@@ -13,7 +13,7 @@ export type TexturePreset = (typeof TEXTURE_PRESETS)[number];
 
 /** Doku dolgusu: şeklin içine procedural doku basar. Tile tasarımlarda dikişsiz (stitch) çalışır. */
 // SVG özniteliğine yazıldığı için kümeyi kısıtlı tutar (enjeksiyon yok); komut/argüman sayısı doğrulanmaz: bozuk yol çizimde boş kalır.
-export const REPEATS = ["stud", "diamond", "tick", "dash", "chevron"] as const;
+export const REPEATS = ["stud", "diamond", "tick", "dash", "chevron", "thorn"] as const;
 export const MOTIFS = ["chevrons", "wings", "crest", "rune"] as const;
 const PATH_CHARS = /^[MmLlHhVvCcSsQqTtAaZz0-9eE+\-.,\s]+$/;
 
@@ -85,7 +85,7 @@ export const LayerSchema = z.discriminatedUnion("kind", [
   z.object({ ...common, kind: z.literal("polygon"), points: z.array(z.tuple([num, num])).min(3), smooth: z.number().min(0).max(1).optional(), corners: z.array(z.number().int().min(0)).optional() }).strict(),
   // Tekrar: çokgen çizgi (points) boyunca her step px'te bir süs öğesi (stud nokta, diamond, tick, dash, chevron), çizgi yönüne döner (rotate:false → sabit).
   // Tüm öğeler tek yol katmanı olur (tek geçiş: malzeme dolgusunda da hızlı). Kenar boyunca perçin/boncuk/diş dizisi, ayraç çizgileri için.
-  z.object({ ...common, kind: z.literal("repeat"), style: z.enum(REPEATS), points: z.array(z.tuple([num, num])).min(2), step: num.min(3), size: num.positive().max(200), margin: num.min(0).optional(), rotate: z.boolean().optional() }).strict(),
+  z.object({ ...common, kind: z.literal("repeat"), style: z.enum(REPEATS), points: z.array(z.tuple([num, num])).min(2), step: num.min(3), size: num.positive().max(200), margin: num.min(0).optional(), rotate: z.boolean().optional(), jitter: z.number().min(0).max(0.8).optional() }).strict(),
   // Motif: hazır süs (chevrons «» oklar, wings kanat, crest tepe süsü, rune mühür halkası). (cx,cy) merkez, size yükseklik px;
   // mirror: tuval ortasına göre karşı tarafa aynalı kopya (kanat/ok çifti). fill/stroke/effects her parçaya uygulanır.
   z.object({ ...common, kind: z.literal("motif"), style: z.enum(MOTIFS), cx: num, cy: num, size: num.positive(), mirror: z.boolean().optional() }).strict(),
@@ -359,6 +359,8 @@ function expandRepeat(r: Extract<Layer, { kind: "repeat" }>): Layer[] {
     tick: [[-Math.max(1, S * 0.12), -S / 2], [Math.max(1, S * 0.12), -S / 2], [Math.max(1, S * 0.12), S / 2], [-Math.max(1, S * 0.12), S / 2]],
     dash: [[-S / 2, -Math.max(1, S * 0.12)], [S / 2, -Math.max(1, S * 0.12)], [S / 2, Math.max(1, S * 0.12)], [-S / 2, Math.max(1, S * 0.12)]],
     chevron: [[-S / 2, -S / 2], [0, -S / 2], [S / 2, 0], [0, S / 2], [-S / 2, S / 2], [0, 0]],
+    // thorn: tabanı çizgi üzerinde, ucu çizginin SOLUNA (yerel -y) bakan, çizgi yönüne yaslanan kıvrık diken; yukarı doğru giden çizgide dışarı bakar
+    thorn: [[-0.42 * S, 0], [-0.12 * S, -0.55 * S], [0.38 * S, -1.25 * S], [0.16 * S, -0.5 * S], [0.42 * S, 0]],
   };
   // çok parçalı tek yol: her öğe alt yol; böylece tek geçişte (tek malzeme boyaması) çizilir. Öğeler çizgi boyunca toplam mesafeyle yerleşir.
   const segs = r.points.slice(1).map((p, i) => ({ a: r.points[i], len: Math.hypot(p[0] - r.points[i][0], p[1] - r.points[i][1]), b: p })), total = segs.reduce((t, g) => t + g.len, 0);
@@ -370,7 +372,8 @@ function expandRepeat(r: Extract<Layer, { kind: "repeat" }>): Layer[] {
     const ux = (g.b[0] - g.a[0]) / g.len, uy = (g.b[1] - g.a[1]) / g.len, t = Math.min(g.len, s - before), cx = g.a[0] + ux * t, cy = g.a[1] + uy * t;
     const ang = keep ? Math.atan2(uy, ux) : 0, ca = Math.cos(ang), sa = Math.sin(ang);
     if (r.style === "stud") { const R = S / 2; d += `M${f2(cx - R)},${f2(cy)} A${f2(R)},${f2(R)} 0 1 0 ${f2(cx + R)},${f2(cy)} A${f2(R)},${f2(R)} 0 1 0 ${f2(cx - R)},${f2(cy)} Z `; continue; }
-    d += `M${local[r.style].map(([lx, ly]) => `${f2(cx + lx * ca - ly * sa)},${f2(cy + lx * sa + ly * ca)}`).join(" L")} Z `;
+    const kk = 1 - (r.jitter ?? 0) * hash2(k, 3, 17); // öğe boyu değişimi (jitter) tohumsuz ama konuma bağlı: yeniden çizimde aynı
+    d += `M${local[r.style].map(([lx, ly]) => `${f2(cx + kk * (lx * ca - ly * sa))},${f2(cy + kk * (lx * sa + ly * ca))}`).join(" L")} Z `;
   }
   if (!d) return [];
   return [{ id: `${r.id}__items`, kind: "path", d: d.trim(), fill: r.fill, stroke: r.stroke, effects: r.effects, opacity: r.opacity, blend: r.blend } as Layer];

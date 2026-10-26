@@ -39,7 +39,7 @@ const ramp5 = (h: string) => [shade(h, -0.72), shade(h, -0.42), h, shade(h, 0.3)
 const customRamps = new Map<string, { metal: string[]; ground: string[]; band: string[]; line: string }>();
 export const rampOf = (theme: ThemeName): { colors?: string[] } => { const r = customRamps.get(theme); return r ? { colors: r.metal } : {}; };
 export const rampsOf = (theme: ThemeName) => customRamps.get(theme);
-const GHOST_LINES: Record<string, string> = { gold: "#c9a45a", silver: "#b9c2cc", bronze: "#b87b45", wood: "#a9855a", stone: "#a09a8e", slate: "#8e9aa6", leather: "#a9855a", marble: "#c8c8d0", carbon: "#8a8f99", cloth: "#b87a8a" };
+const GHOST_LINES: Record<string, string> = { gold: "#c9a45a", silver: "#b9c2cc", bronze: "#b87b45", wood: "#a9855a", stone: "#a09a8e", slate: "#8e9aa6", leather: "#a9855a", marble: "#c8c8d0", carbon: "#8a8f99", cloth: "#b87a8a", papyrus: "#8a6a3a", parchment: "#9a7a48" };
 /** Ghost stilde çizgi rengi: özel palette metalin açık tonu, yerleşik temada metal ön ayarının rengi. */
 export const lineOf = (theme: ThemeName, frame?: MaterialPreset): string => customRamps.get(theme)?.line ?? GHOST_LINES[frame ?? CONTAINER_THEMES[theme].frame ?? "gold"] ?? "#c9a45a";
 
