@@ -99,5 +99,25 @@ for (const [W, H, mode] of [[121, 60, "x"], [60, 71, "y"], [61, 61, "xy"]] as co
   const vis = await px([{ id: "m", ...base, x: 0, y: 0, w: 20, h: 20, inset: undefined, fill: { kind: "solid", color: "#00ff00" } }, { id: "a", ...base, mask: { layer: "m" } }]);
   assert.deepEqual(vis(5, 5).slice(0, 3), [255, 0, 0], "maskelenen katman üstte kırmızı"); assert.equal(vis(40, 40)[3], 0);
 }
+// blur: kenar yumuşar (alfa 0 ile 255 arası ara değerler), merkez dolu kalır; maske blur'dan sonra uygulanır (maske kenarı keskin); noise dolgusu şekil içinde değişken, dışında şeffaf
+{
+  const Wb = 64, Hb = 64, px = async (layers: object[]) => {
+    const { data } = await sharp(await renderDesignPng(DesignSchema.parse({ id: "bl", kind: "sprite", width: Wb, height: Hb, layers }))).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    return (x: number, y: number) => data[(y * Wb + x) * 4 + 3];
+  };
+  const sq = { kind: "box", x: 16, y: 16, w: 32, h: 32, fill: { kind: "solid", color: "#ffffff" } };
+  const sharpA = await px([{ id: "a", ...sq }]), soft = await px([{ id: "a", ...sq, effects: [{ kind: "blur", radius: 4 }] }]);
+  assert.equal(sharpA(14, 32), 0); assert.ok(soft(14, 32) > 20 && soft(14, 32) < 235, `kenar yumuşamalı: ${soft(14, 32)}`);
+  assert.ok(soft(32, 32) > 230 && sharpA(32, 32) === 255, "merkez dolu");
+  const masked = await px([{ id: "m", kind: "box", x: 0, y: 0, w: 20, h: Hb, hidden: true, fill: { kind: "solid", color: "#ffffff" } }, { id: "a", ...sq, effects: [{ kind: "blur", radius: 4 }], mask: { layer: "m" } }]);
+  assert.equal(masked(30, 32), 0, "maske dışında şeffaf (maske blur'dan sonra)"); assert.ok(masked(18, 32) > 20, "maske içinde bulanık içerik kalır");
+  const lum = async (layers: object[]) => {
+    const { data } = await sharp(await renderDesignPng(DesignSchema.parse({ id: "nz", kind: "sprite", width: Wb, height: Hb, layers }))).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    return (x: number, y: number) => [data[(y * Wb + x) * 4], data[(y * Wb + x) * 4 + 3]];
+  };
+  const nz = await lum([{ id: "n", kind: "box", x: 16, y: 16, w: 32, h: 32, fill: { kind: "noise", style: "cells", scale: 4, seed: 2 } }]);
+  const vals = Array.from({ length: 16 }, (_, i) => nz(20 + i, 24 + i)[0]);
+  assert.ok(Math.max(...vals) - Math.min(...vals) > 40, "noise şekil içinde değişken"); assert.equal(nz(5, 5)[1], 0, "noise şekil dışında şeffaf");
+}
 assert.throws(() => DesignSchema.parse({ id: "t", kind: "tile", width: 16, height: 16, symmetry: "x", layers: [] }), /symmetry/);
 console.log("render ok");

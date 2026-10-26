@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { boxBlur, edgeDistance, shadeMaterial } from "./material.js";
+import { NOISE_STYLES, boxBlur, edgeDistance, noiseRgba, shadeMaterial } from "./material.js";
 
 const ones = (w: number, h: number) => new Float32Array(w * h).fill(1);
 const lum = (d: Uint8Array, x: number, y: number, w: number) => { const o = (y * w + x) * 4; return (d[o] + d[o + 1] + d[o + 2]) / 3; };
@@ -93,5 +93,24 @@ for (const preset of ["papyrus", "parchment"] as const) {
   const tile = (wear: number) => shadeMaterial({ w: N, h: N, mask: ones(N, N), fill: { preset, seed: 4, wear }, tileable: true });
   const tm = (t: Uint8Array, f: (x: number, y: number) => boolean) => { let s = 0, n = 0; for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (f(x, y)) { s += lum(t, x, y, N); n++; } return s / n; };
   assert.ok(Math.abs(tm(tile(0.95), edge) - tm(tile(0.95), mid)) < 14, `${preset}: tileable'da kenar yanığı olmamalı (dikişsizlik)`);
+}
+// noiseRgba: her stil değişken ve deterministik, alfa = maske, renk rampası uygulanır, tileable'da dikiş yok (sarma komşuluğu iç komşu kadar benzer)
+for (const style of NOISE_STYLES) {
+  const N = 96, mk = ones(N, N), a = noiseRgba(N, N, mk, { style, seed: 3 });
+  let mn = 255, mx = 0;
+  for (let i = 0; i < N * N; i++) { const l = a[i * 4]; mn = Math.min(mn, l); mx = Math.max(mx, l); assert.equal(a[i * 4 + 3], 255); }
+  assert.ok(mx - mn > 80, `${style}: gürültü neredeyse düz (${mn}..${mx})`);
+  assert.deepEqual(noiseRgba(N, N, mk, { style, seed: 3 }), a, `${style}: deterministik değil`);
+  assert.notDeepEqual(noiseRgba(N, N, mk, { style, seed: 4 }), a, `${style}: tohum etkisiz`);
+  const half = new Float32Array(N * N); for (let i = 0; i < N * N / 2; i++) half[i] = 1;
+  assert.equal(noiseRgba(N, N, half, { style })[(N * N - 1) * 4 + 3], 0, `${style}: maske dışı şeffaf`);
+  const red = noiseRgba(N, N, mk, { style, colors: ["#200000", "#ff2020"] }); let r = 0, g = 0;
+  for (let i = 0; i < N * N; i++) { r += red[i * 4]; g += red[i * 4 + 1]; }
+  assert.ok(r > g * 3, `${style}: colors rampası uygulanmalı`);
+  if (style !== "grain") { // grain piksel başına bağımsız; dikiş kavramı yok
+    const col = (x1: number, x2: number) => { let d = 0; for (let y = 0; y < N; y++) d += Math.abs(a[(y * N + x1) * 4] - a[(y * N + x2) * 4]); return d / N; };
+    const inner = Array.from({ length: N - 1 }, (_, x) => col(x, x + 1)).sort((p, q) => p - q)[Math.floor((N - 1) * 0.9)];
+    assert.ok(col(N - 1, 0) <= inner * 1.4 + 4, `${style}: x dikişi ${col(N - 1, 0).toFixed(1)} vs p90 ${inner.toFixed(1)}`);
+  }
 }
 console.log("material ok");

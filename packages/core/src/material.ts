@@ -317,6 +317,33 @@ export interface MaterialInput {
   tileable?: boolean; // true: tuval kenarı şekil kenarı sayılmaz (dikişsiz tile)
 }
 
+export const NOISE_STYLES = ["clouds", "grain", "cells", "streaks"] as const;
+export type NoiseStyle = (typeof NOISE_STYLES)[number];
+export interface NoiseParams { style: NoiseStyle; scale?: number; contrast?: number; seed?: number; colors?: string[] }
+
+/**
+ * Gürültü katmanı: maskeli şekli renk rampasıyla (varsayılan siyah→beyaz) boyanmış prosedürel gürültüyle doldurur; RGBA (alfa = maske).
+ * clouds: bulut/leke · grain: piksel taneli gren · cells: Voronoi hücre · streaks: yatay çizik/fırça. Tüm gürültü periyodiktir (tile'da dikişsiz).
+ * Tek başına anlamı overlay/multiply/screen blend ve maskelerle birleşince ortaya çıkar (kir, pas lekesi, gren, ışık).
+ */
+// fbm doğal olarak dar aralıkta (0.25..0.75): bulut/çizik için varsayılan kontrast yüksek tutulur.
+export function noiseRgba(w: number, h: number, mask: Float32Array, p: NoiseParams): Uint8Array {
+  const sc = p.scale ?? 1, seed = p.seed ?? 1, ct = p.contrast ?? (p.style === "clouds" ? 2.2 : p.style === "streaks" ? 1.5 : 1), ramp = rampFn(p.colors ?? ["#000000", "#ffffff"]), out = new Uint8Array(w * h * 4);
+  const rnd = (base: number, per: number) => Math.max(1, Math.round(base / per));
+  const cells = Math.max(2, rnd(w, 24 / sc)), cellsY = Math.max(2, rnd(h, 24 / sc));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x, u = (x + 0.5) / w, v = (y + 0.5) / h;
+    let n: number;
+    if (p.style === "clouds") n = fbm(u, v, rnd(w, 120 / sc), rnd(h, 120 / sc), 5, seed);
+    else if (p.style === "grain") n = hash2(x, y, seed);
+    else if (p.style === "cells") { const wo = worley(u, v, cells, cellsY, seed); n = clamp(wo.f1 * 1.2) * 0.6 + wo.id * 0.4; }
+    else n = 0.65 * vnoise(u * rnd(w, 140 / sc), v * rnd(h, 1.6), rnd(w, 140 / sc), rnd(h, 1.6), seed) + 0.35 * vnoise(u * rnd(w, 40 / sc), v * rnd(h, 1.1), rnd(w, 40 / sc), rnd(h, 1.1), seed + 5);
+    const c = ramp(clamp((n - 0.5) * ct + 0.5)), o = i * 4;
+    out[o] = c[0]; out[o + 1] = c[1]; out[o + 2] = c[2]; out[o + 3] = Math.round(clamp(mask[i]) * 255);
+  }
+  return out;
+}
+
 /** Maskelenmiş şekli malzemeyle boyar; RGBA (alfa = maske) döndürür. */
 export function shadeMaterial(inp: MaterialInput): Uint8Array {
   const { w, h, mask } = inp, n = w * h, def = DEFS[inp.fill.preset];

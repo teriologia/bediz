@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import {
-  compileDesign, edgeDistance, expandLayers, makeSeamless, shadeMaterial, withInnerShadow, withShadow,
+  compileDesign, edgeDistance, expandLayers, makeSeamless, noiseRgba, shadeMaterial, withInnerShadow, withShadow,
   type Design, type Shape,
 } from "@bediz/core";
 
@@ -30,6 +30,25 @@ async function materialLayer(d: Design, l: MaterialShape): Promise<sharp.Overlay
   }
   if (l.opacity !== undefined) for (let i = 3; i < rgba.length; i += 4) rgba[i] = Math.round(rgba[i] * l.opacity);
 
+  const parts: sharp.OverlayOptions[] = [{ input: await rawPng(rgba, w, h) }];
+  if (l.stroke) parts.push({ input: await sharp(svgOf(d, { ...l, fill: undefined, effects: undefined, opacity: l.opacity } as Shape)).png().toBuffer() });
+  return parts;
+}
+
+type NoiseShape = Shape & { fill: Extract<NonNullable<Shape["fill"]>, { kind: "noise" }> };
+const isNoise = (l: Shape): l is NoiseShape => l.fill?.kind === "noise";
+
+/** Gürültü katmanı: SVG'den şekil maskesi → renk rampalı prosedürel gürültü → CPU efektleri (gölge/iç gölge/parıltı). */
+async function noiseLayer(d: Design, l: NoiseShape): Promise<sharp.OverlayOptions[]> {
+  const { width: w, height: h } = d;
+  const raw = await sharp(svgOf(d, { ...l, fill: { kind: "solid", color: "#ffffff" }, stroke: undefined, effects: undefined, opacity: undefined } as Shape)).ensureAlpha().raw().toBuffer();
+  let rgba = noiseRgba(w, h, Float32Array.from({ length: w * h }, (_, i) => raw[i * 4 + 3] / 255), l.fill);
+  for (const e of l.effects ?? []) {
+    if (e.kind === "innerShadow") rgba = withInnerShadow(rgba, w, h, e);
+    else if (e.kind === "shadow") rgba = withShadow(rgba, w, h, e);
+    else if (e.kind === "glow") rgba = withShadow(rgba, w, h, { dx: 0, dy: 0, blur: e.blur ?? 6, color: e.color ?? "#ffd27a", opacity: e.opacity ?? 0.8 });
+  }
+  if (l.opacity !== undefined) for (let i = 3; i < rgba.length; i += 4) rgba[i] = Math.round(rgba[i] * l.opacity);
   const parts: sharp.OverlayOptions[] = [{ input: await rawPng(rgba, w, h) }];
   if (l.stroke) parts.push({ input: await sharp(svgOf(d, { ...l, fill: undefined, effects: undefined, opacity: l.opacity } as Shape)).png().toBuffer() });
   return parts;
@@ -88,7 +107,10 @@ const transparent = (d: Design) => sharp({ create: { width: d.width, height: d.h
 
 /** Tek şeklin katman parçaları (maske uygulanmış). Maskeli katman tuvale çizilir, alfası maske değeriyle çarpılır, tek parça olarak döner. */
 async function shapeParts(d: Design, l: Shape, cache: Map<string, Float32Array>, stack: string[]): Promise<sharp.OverlayOptions[]> {
-  const parts = l.kind === "band" ? await bandLayer(d, l) : isMaterial(l) ? await materialLayer(d, l) : [{ input: await sharp(svgOf(d, l)).png().toBuffer() }];
+  let parts = l.kind === "band" ? await bandLayer(d, l) : isMaterial(l) ? await materialLayer(d, l) : isNoise(l) ? await noiseLayer(d, l) : [{ input: await sharp(svgOf(d, l)).png().toBuffer() }];
+  // bulanıklık tüm efektlerden sonra, maskeden önce (Photoshop'ta filtre sonra katman maskesi gibi: maske kenarı keskin kalır)
+  const blur = l.effects?.find((e) => e.kind === "blur");
+  if (blur?.kind === "blur") parts = [{ input: await sharp(await transparent(d).composite(parts).png().toBuffer()).blur(Math.max(0.3, blur.radius)).png().toBuffer() }]; // composite sharp'ta bulanıklıktan SONRA çalışır: önce tuvale çiz, sonra bulanıklaştır
   if (!l.mask) return parts;
   const m = await maskValues(d, l.mask, cache, stack), { data, info } = await transparent(d).composite(parts).raw().toBuffer({ resolveWithObject: true });
   for (let i = 0; i < m.length; i++) data[i * 4 + 3] = Math.round(data[i * 4 + 3] * m[i]);

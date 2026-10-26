@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { SliceSchema, validateSlice } from "./slice.js";
-import { MATERIAL_PRESETS, STONE_PATTERNS, hash2 } from "./material.js";
+import { MATERIAL_PRESETS, NOISE_STYLES, STONE_PATTERNS, hash2 } from "./material.js";
 
 const Color = z.string().regex(/^#[0-9a-fA-F]{6}$/, "renk #RRGGBB olmalı");
 // Durak rengi #RRGGBB ya da #RRGGBBAA (son iki hane saydamlık): vinyet gibi saydama dönen geçişler için.
@@ -37,12 +37,23 @@ const MaterialFill = z.object({
   wear: z.number().min(0).max(1).optional(), // 0..1: kenar aşınması + oyuklarda kir + lekeler
 }).strict();
 
+/** Gürültü dolgusu: prosedürel bulut/gren/hücre/çizik, renk rampasıyla. Blend ve maskelerle kir, pas, gren, ışık için. */
+const NoiseFill = z.object({
+  kind: z.literal("noise"),
+  style: z.enum(NOISE_STYLES),
+  scale: z.number().positive().max(20).optional(), // büyük = daha ince desen
+  contrast: z.number().min(0.2).max(6).optional(),
+  seed: z.number().int().min(0).max(9999).optional(),
+  colors: z.array(Color).min(2).max(6).optional(), // koyu → açık; varsayılan siyah → beyaz
+}).strict();
+
 export const FillSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("solid"), color: Color, opacity: z.number().min(0).max(1).optional() }).strict(),
   z.object({ kind: z.literal("linear"), angle: z.number().optional(), stops: Stops }).strict(), // 0=soldan sağa, 90=yukarıdan aşağı
   z.object({ kind: z.literal("radial"), stops: Stops, cx: z.number().optional(), cy: z.number().optional(), r: z.number().positive().optional() }).strict(), // cx/cy/r: 0..1 tuval oranı (varsayılan .4/.35/.75; vinyet için .5/.5/.75)
   TextureFill,
   MaterialFill,
+  NoiseFill,
 ]);
 export type Fill = z.infer<typeof FillSchema>;
 
@@ -54,6 +65,8 @@ export const EffectSchema = z.discriminatedUnion("kind", [
     color: Color.optional(), opacity: z.number().min(0).max(1).optional() }).strict(),
   z.object({ kind: z.literal("innerShadow"), dx: z.number().optional(), dy: z.number().optional(), blur: z.number().min(0).max(30).optional(),
     color: Color.optional(), opacity: z.number().min(0).max(1).optional() }).strict(),
+  // Bulanıklık: katmanın son hâlini (tüm efektlerden sonra, maskeden önce) gaussian bulanıklaştırır; radius = sigma px. Yumuşak ışık, sis, derinlik.
+  z.object({ kind: z.literal("blur"), radius: z.number().min(0.3).max(80) }).strict(),
   z.object({ kind: z.literal("glow"), blur: z.number().min(0).max(40).optional(), color: Color.optional(), opacity: z.number().min(0).max(1).optional() }).strict(),
   // Film greni: şeklin içine koyulaştıran ince gürültü (amount 0..1, size = tane sıklığı çarpanı). Sadece SVG hattında; `material` dolgulu katmanlarda yok sayılır.
   z.object({ kind: z.literal("grain"), amount: z.number().min(0).max(1).optional(), size: z.number().positive().max(8).optional(), seed: z.number().int().min(0).max(9999).optional() }).strict(),
@@ -229,6 +242,8 @@ function effectStep(e: Effect, cur: string, out: string): string {
         <feBlend in="${out}_m" in2="${cur}" mode="multiply" result="${out}_x"/>
         <feComposite in="${out}_x" in2="SourceAlpha" operator="in" result="${out}"/>`;
     }
+    case "blur": // bulanıklık katman sonunda PNG hattında uygulanır; SVG zincirinde geçiş
+      return `<feOffset in="${cur}" dx="0" dy="0" result="${out}"/>`;
     case "glow":
       return `<feGaussianBlur in="SourceAlpha" stdDeviation="${e.blur ?? 6}" result="${out}_g"/>
         <feFlood flood-color="${e.color ?? "#ffd27a"}" flood-opacity="${e.opacity ?? 0.8}" result="${out}_c"/>
@@ -514,7 +529,7 @@ export function compileDesign(d: Design): string {
     let fill = "none";
     const f = l.fill;
     if (f?.kind === "solid") fill = f.color;
-    else if (f?.kind === "texture" || f?.kind === "material") fill = "#ffffff";
+    else if (f?.kind === "texture" || f?.kind === "material" || f?.kind === "noise") fill = "#ffffff";
     else if (f?.kind === "linear" || f?.kind === "radial") {
       const stops = f.stops.map(([o, c]) => `<stop offset="${o}" stop-color="${c.slice(0, 7)}"${c.length > 7 ? ` stop-opacity="${f2(parseInt(c.slice(7), 16) / 255)}"` : ""}/>`).join("");
       if (f.kind === "linear") {
