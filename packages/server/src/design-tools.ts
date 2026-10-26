@@ -60,6 +60,7 @@ export function registerDesignTools(server: McpServer) {
         textures: { note: "fill {kind:texture}: eski SVG filtre dokuları (basit).", ...presetInfo() },
         layerKinds: {
           box: "inset (tuval kenarından içeri) VEYA x,y,w,h; radius (yuvarlak köşe) veya chamfer (pah).",
+          image: "asset (import_image/crop_asset/key_alpha/grid_slice/export_design ile oluşmuş asset id'si) + box gibi inset/x,y,w,h; fit: stretch|contain|cover, flipX/flipY. Dışarıdan gelen/üretilmiş PNG'yi katman olarak koyar; blur/distort/adjust efektleri, mask, opacity, blend çalışır (gölge/bevel çalışmaz). Hibrit yol: görsel modelle üretilen doku/süs → import_image → key_alpha (düz zemini sil) → image katmanı.",
           ring: "box gibi + thickness: ortası boş çerçeve halkası (eşit kalınlık).",
           polygon: "points [[x,y],...]; smooth (0..1) köşeleri Bézier ile yuvarlar (az nokta + smooth: pürüzsüz eğri), corners [indeks,...] keskin kalacak köşeler.",
           path: "d: SVG yol verisi (M L H V C S Q T A Z). Gerçek Bézier/yay eğrileri için bunu kullan: az noktayla pürüzsüz kenar (köşeli çokgenden çok daha iyi). evenodd? ile delikli şekil.",

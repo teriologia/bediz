@@ -5,6 +5,8 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { DesignSchema, ornateFrameRecipe, silhouettePath } from "@bediz/core";
 import { renderDesignPng } from "./design-render.js";
+import { gridCells, keyAlphaRgba } from "./image-tools.js";
+import { assets } from "./state.js";
 import { renderNineSlice, tileTo } from "./render.js";
 
 // 30x30 kaynak: 10px kenarlı 3x3 ızgara, her bölge ayrı renk (R = sütun, G = satır).
@@ -97,6 +99,36 @@ for (const [W, H, mode] of [[121, 60, "x"], [60, 71, "y"], [61, 61, "xy"]] as co
   assert.ok(hi[0] > base[0] && hi[2] < base[2], `kontrast açığı açar koyuyu koyultur: ${base} → ${hi}`);
   assert.equal((await px(mk({ brightness: -0.5 }), 12))[3], 0, "saydam alan saydam kalır");
   assert.equal(base[3], 255);
+}
+// image katmanı: asset kutuya yerleşir (fit), flipX aynalar, opacity, tuval dışı kırpılır; asset yoksa net hata
+{
+  const dir = mkdtempSync(join(tmpdir(), "bediz-img-")), path = join(dir, "src.png");
+  // 4x2: sol yarı kırmızı, sağ yarı mavi
+  const src = Buffer.alloc(4 * 2 * 4); for (let i = 0; i < 8; i++) src.set(i % 4 < 2 ? [255, 0, 0, 255] : [0, 0, 255, 255], i * 4);
+  writeFileSync(path, await sharp(src, { raw: { width: 4, height: 2, channels: 4 } }).png().toBuffer());
+  assets.set("t_img", { id: "t_img", path, width: 4, height: 2 });
+  const mk = (extra: object) => DesignSchema.parse({ id: "im", kind: "sprite", width: 40, height: 20, layers: [{ id: "i", kind: "image", asset: "t_img", x: 0, y: 0, w: 40, h: 20, ...extra }] });
+  const px = async (d: ReturnType<typeof mk>, x: number, y = 10) => [...(await sharp(await renderDesignPng(d)).ensureAlpha().raw().toBuffer()).subarray((y * 40 + x) * 4, (y * 40 + x) * 4 + 4)];
+  assert.deepEqual(await px(mk({}), 5), [255, 0, 0, 255], "sol kırmızı");
+  assert.deepEqual(await px(mk({}), 35), [0, 0, 255, 255], "sağ mavi");
+  assert.deepEqual(await px(mk({ flipX: true }), 5), [0, 0, 255, 255], "flipX aynalar");
+  assert.equal((await px(mk({ opacity: 0.5 }), 5))[3], 128, "opacity");
+  assert.equal((await px(mk({ fit: "contain", w: 40, h: 40, y: 0 }), 5, 2))[3], 0, "contain: 2:1 görsel 40x40'ta ortalanır, üst şerit boş");
+  assert.equal((await px(mk({ x: 30 }), 5))[3], 0, "x:30 → solda boş");
+  assert.equal((await px(mk({ x: 30, w: 40 }), 35))[3], 255, "tuval dışına taşan kırpılır, kalan görünür");
+  assets.delete("t_img");
+  await assert.rejects(renderDesignPng(mk({})), /asset yok/);
+}
+// key_alpha + grid_slice yardımcıları
+{
+  const out = keyAlphaRgba(Uint8Array.from([255, 255, 255, 255, 250, 250, 250, 255, 200, 0, 0, 255]), "#ffffff", 20, 0);
+  assert.equal(out[3], 0, "tam eşleşme saydam"); assert.equal(out[7], 0, "tolerans içi saydam"); assert.equal(out[11], 255, "uzak renk korunur");
+  const soft = keyAlphaRgba(Uint8Array.from([235, 255, 255, 255]), "#ffffff", 10, 20);
+  assert.ok(soft[3] > 0 && soft[3] < 255, "softness aralığında yarı saydam");
+  const cells = gridCells(100, 50, 4, 2, 2, 2);
+  assert.equal(cells.length, 8); assert.deepEqual([cells[0].left, cells[0].top, cells[0].width, cells[0].height], [2, 2, 22, 22]);
+  assert.deepEqual([cells[5].r, cells[5].c, cells[5].left, cells[5].top], [1, 1, 26, 26], "hücre (1,1) konumu");
+  assert.throws(() => gridCells(10, 10, 16, 1, 0, 1), /sığmıyor/);
 }
 // mask: şekil içine kırpma (alfa), gradyan luma maskesi (+ invert), gizli maske çıktıda görünmez, iç içe maske, motif açılımı
 {

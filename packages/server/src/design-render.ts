@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { assets } from "./state.js";
 import {
   compileDesign, displaceRgba, edgeDistance, expandLayers, makeSeamless, noiseRgba, shadeMaterial, withInnerShadow, withShadow,
   type Design, type Shape,
@@ -33,6 +34,31 @@ async function materialLayer(d: Design, l: MaterialShape): Promise<sharp.Overlay
   const parts: sharp.OverlayOptions[] = [{ input: await rawPng(rgba, w, h) }];
   if (l.stroke) parts.push({ input: await sharp(svgOf(d, { ...l, fill: undefined, effects: undefined, opacity: l.opacity } as Shape)).png().toBuffer() });
   return parts;
+}
+
+type ImageShape = Extract<Shape, { kind: "image" }>;
+
+/** Görsel katmanı: asset PNG'sini kutuya sığdırır (fit), gerekirse çevirir, tuvale yerleştirir. */
+async function imageLayer(d: Design, l: ImageShape): Promise<sharp.OverlayOptions[]> {
+  const a = assets.get(l.asset);
+  if (!a) throw new Error(`image ${l.id}: asset yok: ${l.asset} (import_image/export_design ile oluştur)`);
+  const x = Math.round(l.inset ?? l.x ?? 0), y = Math.round(l.inset ?? l.y ?? 0);
+  const w = Math.round(l.w ?? (l.inset !== undefined ? d.width - 2 * l.inset : d.width - x)), h = Math.round(l.h ?? (l.inset !== undefined ? d.height - 2 * l.inset : d.height - y));
+  let img = sharp(a.path).ensureAlpha().resize(w, h, { fit: l.fit === "cover" ? "cover" : l.fit === "contain" ? "contain" : "fill", background: { r: 0, g: 0, b: 0, alpha: 0 } });
+  if (l.flipX) img = img.flop();
+  if (l.flipY) img = img.flip();
+  const buf = await img.png().toBuffer(), left = Math.max(0, x), top = Math.max(0, y);
+  // tuval dışına taşan kısım kırpılır
+  const crop = { left: left - x, top: top - y, width: Math.min(w - (left - x), d.width - left), height: Math.min(h - (top - y), d.height - top) };
+  if (crop.width <= 0 || crop.height <= 0) return [];
+  const piece = await sharp(buf).extract(crop).png().toBuffer();
+  let out = piece;
+  if (l.opacity !== undefined) {
+    const { data, info } = await sharp(piece).raw().toBuffer({ resolveWithObject: true });
+    for (let i = 3; i < data.length; i += 4) data[i] = Math.round(data[i] * l.opacity);
+    out = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+  }
+  return [{ input: out, left, top }];
 }
 
 type NoiseShape = Shape & { fill: Extract<NonNullable<Shape["fill"]>, { kind: "noise" }> };
@@ -107,7 +133,7 @@ const transparent = (d: Design) => sharp({ create: { width: d.width, height: d.h
 
 /** Tek şeklin katman parçaları (maske uygulanmış). Maskeli katman tuvale çizilir, alfası maske değeriyle çarpılır, tek parça olarak döner. */
 async function shapeParts(d: Design, l: Shape, cache: Map<string, Float32Array>, stack: string[]): Promise<sharp.OverlayOptions[]> {
-  let parts = l.kind === "band" ? await bandLayer(d, l) : isMaterial(l) ? await materialLayer(d, l) : isNoise(l) ? await noiseLayer(d, l) : [{ input: await sharp(svgOf(d, l)).png().toBuffer() }];
+  let parts = l.kind === "image" ? await imageLayer(d, l) : l.kind === "band" ? await bandLayer(d, l) : isMaterial(l) ? await materialLayer(d, l) : isNoise(l) ? await noiseLayer(d, l) : [{ input: await sharp(svgOf(d, l)).png().toBuffer() }];
   // bulanıklık tüm efektlerden sonra, maskeden önce (Photoshop'ta filtre sonra katman maskesi gibi: maske kenarı keskin kalır)
   const blur = l.effects?.find((e) => e.kind === "blur");
   if (blur?.kind === "blur") parts = [{ input: await sharp(await transparent(d).composite(parts).png().toBuffer()).blur(Math.max(0.3, blur.radius)).png().toBuffer() }]; // composite sharp'ta bulanıklıktan SONRA çalışır: önce tuvale çiz, sonra bulanıklaştır

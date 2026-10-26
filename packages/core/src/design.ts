@@ -113,6 +113,9 @@ export const LayerSchema = z.discriminatedUnion("kind", [
   // Motif: hazır süs (chevrons «» oklar, wings kanat, crest tepe süsü, rune mühür halkası). (cx,cy) merkez, size yükseklik px;
   // mirror: tuval ortasına göre karşı tarafa aynalı kopya (kanat/ok çifti). fill/stroke/effects her parçaya uygulanır.
   z.object({ ...common, kind: z.literal("motif"), style: z.enum(MOTIFS), cx: num, cy: num, size: num.positive(), mirror: z.boolean().optional() }).strict(),
+  // Görsel: import_image/crop_asset/key_alpha ile hazırlanmış bir asset'i (PNG) kutuya yerleştirir. fit: stretch (varsayılan) | contain | cover; flipX/flipY aynalar.
+  // Efektler (blur, distort, adjust), mask, opacity, blend çalışır; gölge/bevel çalışmaz. Yalnız PNG hattında çizilir (SVG derleyici yok sayar).
+  z.object({ ...common, kind: z.literal("image"), asset: z.string().min(1).max(64), ...boxGeo, fit: z.enum(["stretch", "contain", "cover"]).optional(), flipX: z.boolean().optional(), flipY: z.boolean().optional() }).strict(),
   // Bant: silüet yolunun (d) kenar mesafesine göre dilimi — from..to px aralığındaki bölge (to yoksa merkeze kadar). Eşit kalınlıklı çerçeve katmanları için;
   // yalnız PNG hattında çizilir (SVG derleyici yok sayar). Malzeme dolgusunda bevel bant kenarlarını izler.
   z.object({ ...common, kind: z.literal("band"), d: z.string().min(2).max(4000).regex(PATH_CHARS).regex(/^\s*[Mm]/), from: num.min(0), to: num.positive().optional() }).strict(),
@@ -300,6 +303,7 @@ function geometry(l: Shape, W: number, H: number): { d: string; evenodd: boolean
     case "band": return { d: l.d, evenodd: false };
     case "ellipse": return { d: `M${fmt(l.cx - l.rx)},${fmt(l.cy)} A${fmt(l.rx)},${fmt(l.ry)} 0 1 0 ${fmt(l.cx + l.rx)},${fmt(l.cy)} A${fmt(l.rx)},${fmt(l.ry)} 0 1 0 ${fmt(l.cx - l.rx)},${fmt(l.cy)} Z`, evenodd: false };
     case "box":
+    case "image":
     case "ring": {
       const i = l.inset;
       const x = i ?? l.x ?? 0, y = i ?? l.y ?? 0;
@@ -307,7 +311,7 @@ function geometry(l: Shape, W: number, H: number): { d: string; evenodd: boolean
       const w = l.w ?? (i !== undefined ? W - 2 * i : W - x), h = l.h ?? (i !== undefined ? H - 2 * i : H - y);
       const r = l.radius ?? 0, c = l.chamfer ?? 0;
       const outer = boxPath(x, y, w, h, r, c);
-      if (l.kind === "box") return { d: outer, evenodd: false };
+      if (l.kind !== "ring") return { d: outer, evenodd: false };
       const t = l.thickness;
       if (w - 2 * t <= 0 || h - 2 * t <= 0) throw new Error(`ring ${l.id}: thickness kutuya sığmıyor`);
       // Eşit kalınlık için iç yarıçap r-t, iç pah c - t(2-√2).
@@ -563,7 +567,7 @@ export function compileDesign(d: Design): string {
   const defs: string[] = [], body: string[] = [];
 
   const emit = (l: Shape) => {
-    if (l.kind === "band") return; // bant katmanları yalnız PNG hattında (CPU mesafe alanı) çizilir
+    if (l.kind === "band" || l.kind === "image") return; // bant katmanları yalnız PNG hattında (CPU mesafe alanı) çizilir
     const { d: path, evenodd } = geometry(l, W, H);
     let fill = "none";
     const f = l.fill;
