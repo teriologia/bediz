@@ -13,6 +13,7 @@ export type TexturePreset = (typeof TEXTURE_PRESETS)[number];
 
 /** Doku dolgusu: şeklin içine procedural doku basar. Tile tasarımlarda dikişsiz (stitch) çalışır. */
 // SVG özniteliğine yazıldığı için kümeyi kısıtlı tutar (enjeksiyon yok); komut/argüman sayısı doğrulanmaz: bozuk yol çizimde boş kalır.
+export const REPEATS = ["stud", "diamond", "tick", "dash", "chevron"] as const;
 export const MOTIFS = ["chevrons", "wings", "crest", "rune"] as const;
 const PATH_CHARS = /^[MmLlHhVvCcSsQqTtAaZz0-9eE+\-.,\s]+$/;
 
@@ -82,6 +83,9 @@ export const LayerSchema = z.discriminatedUnion("kind", [
   z.object({ ...common, kind: z.literal("ring"), ...boxGeo, thickness: num.positive() }).strict(),
   // smooth: 0..1 — köşeleri Catmull-Rom→Bézier ile yuvarlar (1 = tam yumuşak); corners: yumuşatılmayacak (keskin) köşe indeksleri.
   z.object({ ...common, kind: z.literal("polygon"), points: z.array(z.tuple([num, num])).min(3), smooth: z.number().min(0).max(1).optional(), corners: z.array(z.number().int().min(0)).optional() }).strict(),
+  // Tekrar: çokgen çizgi (points) boyunca her step px'te bir süs öğesi (stud nokta, diamond, tick, dash, chevron), çizgi yönüne döner (rotate:false → sabit).
+  // Tüm öğeler tek yol katmanı olur (tek geçiş: malzeme dolgusunda da hızlı). Kenar boyunca perçin/boncuk/diş dizisi, ayraç çizgileri için.
+  z.object({ ...common, kind: z.literal("repeat"), style: z.enum(REPEATS), points: z.array(z.tuple([num, num])).min(2), step: num.min(3), size: num.positive().max(200), margin: num.min(0).optional(), rotate: z.boolean().optional() }).strict(),
   // Motif: hazır süs (chevrons «» oklar, wings kanat, crest tepe süsü, rune mühür halkası). (cx,cy) merkez, size yükseklik px;
   // mirror: tuval ortasına göre karşı tarafa aynalı kopya (kanat/ok çifti). fill/stroke/effects her parçaya uygulanır.
   z.object({ ...common, kind: z.literal("motif"), style: z.enum(MOTIFS), cx: num, cy: num, size: num.positive(), mirror: z.boolean().optional() }).strict(),
@@ -232,7 +236,7 @@ function boxPath(x: number, y: number, w: number, h: number, r = 0, c = 0): stri
   return `M${fmt(x + r)},${fmt(y)} H${fmt(x + w - r)} ${a} ${fmt(x + w)},${fmt(y + r)} V${fmt(y + h - r)} ${a} ${fmt(x + w - r)},${fmt(y + h)} H${fmt(x + r)} ${a} ${fmt(x)},${fmt(y + h - r)} V${fmt(y + r)} ${a} ${fmt(x + r)},${fmt(y)} Z`;
 }
 
-export type Shape = Exclude<Layer, { kind: "gem" | "corners" | "cracks" | "rivets" | "motif" }>;
+export type Shape = Exclude<Layer, { kind: "gem" | "corners" | "cracks" | "rivets" | "motif" | "repeat" }>;
 
 /** Kapalı çokgeni Catmull-Rom → kübik Bézier'e çevirir; tension 0..1, `sharp` köşelerde teğet sıfırlanır (köşe korunur). */
 function smoothPath(P: [number, number][], tension: number, sharp: Set<number>): string {
@@ -348,6 +352,30 @@ function expandMotif(m: Extract<Layer, { kind: "motif" }>, W: number): Layer[] {
   return out;
 }
 
+// ---------- tekrar (çizgi boyunca yinelenen süs) ----------
+function expandRepeat(r: Extract<Layer, { kind: "repeat" }>): Layer[] {
+  const S = r.size, keep = r.rotate !== false, local: Record<string, Pt[]> = {
+    diamond: [[S / 2, 0], [0, S / 3], [-S / 2, 0], [0, -S / 3]],
+    tick: [[-Math.max(1, S * 0.12), -S / 2], [Math.max(1, S * 0.12), -S / 2], [Math.max(1, S * 0.12), S / 2], [-Math.max(1, S * 0.12), S / 2]],
+    dash: [[-S / 2, -Math.max(1, S * 0.12)], [S / 2, -Math.max(1, S * 0.12)], [S / 2, Math.max(1, S * 0.12)], [-S / 2, Math.max(1, S * 0.12)]],
+    chevron: [[-S / 2, -S / 2], [0, -S / 2], [S / 2, 0], [0, S / 2], [-S / 2, S / 2], [0, 0]],
+  };
+  // çok parçalı tek yol: her öğe alt yol; böylece tek geçişte (tek malzeme boyaması) çizilir. Öğeler çizgi boyunca toplam mesafeyle yerleşir.
+  const segs = r.points.slice(1).map((p, i) => ({ a: r.points[i], len: Math.hypot(p[0] - r.points[i][0], p[1] - r.points[i][1]), b: p })), total = segs.reduce((t, g) => t + g.len, 0);
+  let d = "", at = 0;
+  for (let k = 0, s = r.margin ?? 0; s <= total + 1e-6 && k < 600; k++, s += r.step) {
+    while (at < segs.length - 1 && s > segs.slice(0, at + 1).reduce((t, g) => t + g.len, 0)) at++;
+    const g = segs[at], before = segs.slice(0, at).reduce((t, q) => t + q.len, 0);
+    if (g.len === 0) continue;
+    const ux = (g.b[0] - g.a[0]) / g.len, uy = (g.b[1] - g.a[1]) / g.len, t = Math.min(g.len, s - before), cx = g.a[0] + ux * t, cy = g.a[1] + uy * t;
+    const ang = keep ? Math.atan2(uy, ux) : 0, ca = Math.cos(ang), sa = Math.sin(ang);
+    if (r.style === "stud") { const R = S / 2; d += `M${f2(cx - R)},${f2(cy)} A${f2(R)},${f2(R)} 0 1 0 ${f2(cx + R)},${f2(cy)} A${f2(R)},${f2(R)} 0 1 0 ${f2(cx - R)},${f2(cy)} Z `; continue; }
+    d += `M${local[r.style].map(([lx, ly]) => `${f2(cx + lx * ca - ly * sa)},${f2(cy + lx * sa + ly * ca)}`).join(" L")} Z `;
+  }
+  if (!d) return [];
+  return [{ id: `${r.id}__items`, kind: "path", d: d.trim(), fill: r.fill, stroke: r.stroke, effects: r.effects, opacity: r.opacity, blend: r.blend } as Layer];
+}
+
 // ---------- köşe süsü ----------
 type Pt = [number, number];
 const cubic = (p0: Pt, p1: Pt, p2: Pt, p3: Pt, n = 10): Pt[] => Array.from({ length: n }, (_, k) => {
@@ -451,8 +479,8 @@ export function expandLayers(d: Design): Shape[] {
   const out: Shape[] = [];
   for (const l of d.layers) {
     if (l.hidden) continue;
-    const subs: Layer[] = l.kind === "gem" ? expandGem(l) : l.kind === "corners" ? expandCorners(l, d.width, d.height) : l.kind === "cracks" ? expandCracks(l) : l.kind === "rivets" ? expandRivets(l, d.width, d.height) : l.kind === "motif" ? expandMotif(l, d.width) : [l];
-    for (const s of subs) if (!s.hidden && s.kind !== "gem" && s.kind !== "corners" && s.kind !== "cracks" && s.kind !== "rivets" && s.kind !== "motif") out.push(s);
+    const subs: Layer[] = l.kind === "gem" ? expandGem(l) : l.kind === "corners" ? expandCorners(l, d.width, d.height) : l.kind === "cracks" ? expandCracks(l) : l.kind === "rivets" ? expandRivets(l, d.width, d.height) : l.kind === "motif" ? expandMotif(l, d.width) : l.kind === "repeat" ? expandRepeat(l) : [l];
+    for (const s of subs) if (!s.hidden && s.kind !== "gem" && s.kind !== "corners" && s.kind !== "cracks" && s.kind !== "rivets" && s.kind !== "motif" && s.kind !== "repeat") out.push(s);
   }
   return out;
 }

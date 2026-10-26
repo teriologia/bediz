@@ -55,7 +55,7 @@ export function registerDesignTools(server: McpServer) {
           tile: "Dikişsiz döşenen doku (arka plan zemini). Tek bir box + texture dolgu yeterli. Bevel/shadow kullanma (kenarlarda iz bırakır).",
           sprite: "Tek parça süs (mücevher, rozet). Gerilmez; widget'ta anchor ile yerleştirilir.",
         },
-        materials: { note: "fill {kind:material}: CPU hattı; Voronoi taş/blok, fırçalı metal, ahşap; bevel gerçek kenar eğimi (depth/size px). Önerilen.", ...materialDefaults() },
+        materials: { note: "fill {kind:material}: CPU hattı; preset: stone/slate (taş, desen: flagstone|blocks|rough|fine), gold/silver/bronze (fırçalı metal), wood, leather (taneli deri), marble (damarlı mermer), carbon (çapraz dokuma karbon fiber), cloth (kumaş/kadife). colors: koyu→açık rampa ile HER malzemeyi istediğin renge boya (ör. siyah mermer, kırmızı deri, mavi kadife); scale/wear ile ince ayar. Bevel gerçek kenar eğimi (depth/size px). Önerilen.", ...materialDefaults() },
         themes: { note: "create_container theme değerleri; alanları ayrıca vererek ezebilirsin.", ...CONTAINER_THEMES },
         textures: { note: "fill {kind:texture}: eski SVG filtre dokuları (basit).", ...presetInfo() },
         layerKinds: {
@@ -68,6 +68,7 @@ export function registerDesignTools(server: McpServer) {
           line: "points [[x,y],...], closed?; stroke ZORUNLU (fill kullanma). Açık uçlu çizgi: tel, oyuk, çatlak.",
           cracks: "x,y,w,h bölgesine count adet dallanan çatlak (koyu iz + parlak kenar); length, seed, direction (rad, bir yöne hizalar), spread. Bölgeyi yüzeyin içinde tut (boşluğa taşan çatlak havada kalır).",
           band: "d (silüet SVG yolu), from, to? (kenara px mesafe aralığı), fill: silüetin kenar mesafesine göre dilimi — eşit kalınlıklı çerçeve katmanları (dış çizgi → metal → boşluk → yüzey) için, her silüette. Yalnız PNG çıktısında; malzeme dolgusu bevel'i bant kenarlarında alır. silhouettePath: rect|notched|hex|arrow|swallow|winged (create_button shape: ile hazır).",
+          repeat: "style: stud (nokta/perçin) | diamond | tick | dash | chevron; points (çokgen çizgi), step (px), size, margin?, rotate? (varsayılan çizgi yönüne döner): çizgi boyunca yinelenen süs dizisi (kenar perçini, boncuk, ayraç, diş). Hepsi tek yol katmanı: malzeme dolgusunda da hızlı. Köşeli çerçeve kenarı için 5 noktayla kapalı dikdörtgen ver.",
           motif: "style: chevrons («» oklar) | wings (yukarı-dışa kanat/taç) | crest (tepe süsü) | rune (mühür halkası); cx,cy,size, mirror? (tuval ortasına aynalı kopya); fill/stroke/effects her parçaya uygulanır.",
           rivets: "points [[x,y],...] (sol üst köşeye göre, 4 köşeye aynalanır), size, which?: kubbeli altın perçin. Köşe bölgesinde tut (kenar şeridinde gerilir).",
           corners: "style: blade (keskin boynuz) | scroll (kıvrımlı volüt) | claw (pençe); size (px; slice marjını aşma, yoksa gerilir), inset?, which?:[tl,tr,bl,br], studs? — 4 köşeye süs; fill/stroke/effects her parçaya uygulanır.",

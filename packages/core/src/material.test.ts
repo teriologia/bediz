@@ -12,7 +12,7 @@ assert.notDeepEqual(a, shadeMaterial({ w: 64, h: 64, mask: ones(64, 64), fill: {
 
 // dikişsizlik: sarma komşuluğu (N-1,0), iç komşu çiftlerinin %90 diliminden belirgin büyük olmamalı
 // (tek çifte bakmak keskin harç çizgilerinde gürültülü; 2x2 döşeme görsel olarak da doğrulandı)
-for (const [preset, pattern] of [["stone", "flagstone"], ["stone", "blocks"], ["slate", "flagstone"], ["gold", undefined], ["wood", undefined]] as const) {
+for (const [preset, pattern] of [["stone", "flagstone"], ["stone", "blocks"], ["slate", "flagstone"], ["gold", undefined], ["wood", undefined], ["leather", undefined], ["marble", undefined], ["carbon", undefined], ["cloth", undefined]] as const) {
   const N = 128, t = shadeMaterial({ w: N, h: N, mask: ones(N, N), fill: { preset, pattern, seed: 2 }, tileable: true });
   const col = (x1: number, x2: number) => { let s = 0; for (let y = 0; y < N; y++) s += Math.abs(lum(t, x1, y, N) - lum(t, x2, y, N)); return s / N; };
   const row = (y1: number, y2: number) => { let s = 0; for (let x = 0; x < N; x++) s += Math.abs(lum(t, x, y1, N) - lum(t, x, y2, N)); return s / N; };
@@ -66,5 +66,18 @@ assert.ok(Date.now() - t0 < 1500, `yavaş: ${Date.now() - t0}ms`);
     assert.ok(Math.abs(d[c * n + c + rho] - (r - rho)) < 0.8, `eksen ρ=${rho}`);
     assert.ok(Math.abs(d[(c + k) * n + c + k] - (r - rho)) < 0.8, `çapraz ρ=${rho}`);
   }
+}
+// yeni aileler: her önizleme tek düz renk değil (parlaklık çeşitliliği), NaN yok, özel renk rampası uygulanır, aynı tohum = aynı çıktı
+for (const preset of ["leather", "marble", "carbon", "cloth"] as const) {
+  const N = 96, run = (colors?: string[]) => shadeMaterial({ w: N, h: N, mask: ones(N, N), fill: { preset, seed: 5, colors }, tileable: true });
+  const t = run();
+  let mn = 255, mx = 0;
+  for (let i = 0; i < N * N; i++) { const l = lum(t, i % N, Math.floor(i / N), N); assert.ok(Number.isFinite(l), `${preset}: NaN`); mn = Math.min(mn, l); mx = Math.max(mx, l); }
+  assert.ok(mx - mn > 30, `${preset}: doku neredeyse düz (${mn}..${mx})`);
+  assert.deepEqual(run(), t, `${preset}: deterministik değil`);
+  const red = run(["#200000", "#500000", "#a00000", "#ff4040"]);
+  let r = 0, b = 0;
+  for (let i = 0; i < N * N; i++) { r += red[i * 4]; b += red[i * 4 + 2]; }
+  assert.ok(r > b * 2, `${preset}: colors rampası uygulanmalı`);
 }
 console.log("material ok");

@@ -3,7 +3,7 @@
  * yapıyla (Voronoi taş/blok, fırçalı metal, gerçek kenar eğimi) üretir. Tüm gürültü periyodiktir: tile'lar dikişsizdir.
  */
 
-export const MATERIAL_PRESETS = ["stone", "slate", "gold", "silver", "bronze", "wood"] as const;
+export const MATERIAL_PRESETS = ["stone", "slate", "gold", "silver", "bronze", "wood", "leather", "marble", "carbon", "cloth"] as const;
 export type MaterialPreset = (typeof MATERIAL_PRESETS)[number];
 export const STONE_PATTERNS = ["flagstone", "blocks", "rough", "fine"] as const;
 export type StonePattern = (typeof STONE_PATTERNS)[number];
@@ -18,7 +18,7 @@ export interface MaterialParams {
 }
 export interface Bevel { depth: number; size?: number; azimuth?: number } // depth/size px cinsinden kenar eğimi
 
-interface Def { family: "stone" | "metal" | "wood"; ramp: string[]; amp: number; spec: number; pattern?: StonePattern; cells?: number }
+interface Def { family: "stone" | "metal" | "wood" | "leather" | "marble" | "weave"; ramp: string[]; amp: number; spec: number; pattern?: StonePattern; cells?: number; weaveCell?: number; twill?: boolean }
 const DEFS: Record<MaterialPreset, Def> = {
   stone: { family: "stone", ramp: ["#3e3a35", "#645f56", "#8b8374", "#a79e8d"], amp: 3, spec: 0.08, pattern: "flagstone" },
   slate: { family: "stone", ramp: ["#0b1013", "#18211f", "#26312f", "#38453f"], amp: 2.2, spec: 0.15, pattern: "flagstone", cells: 0.75 },
@@ -26,6 +26,10 @@ const DEFS: Record<MaterialPreset, Def> = {
   silver: { family: "metal", ramp: ["#101216", "#30353d", "#5f6671", "#939ba7", "#cdd3db"], amp: 0.6, spec: 0.55 },
   bronze: { family: "metal", ramp: ["#150a05", "#3d2210", "#6e4322", "#9b6a3c", "#c79a68"], amp: 0.8, spec: 0.5 },
   wood: { family: "wood", ramp: ["#2b190b", "#4d2f16", "#7a5229", "#a07842"], amp: 1.2, spec: 0.15 },
+  leather: { family: "leather", ramp: ["#1a0f0a", "#33200f", "#5a3a1c", "#80582b"], amp: 1.6, spec: 0.12 }, // taneli deri: küçük yuvarlak hücreler + kırışıklık çizgileri
+  marble: { family: "marble", ramp: ["#1c1c22", "#4b4b55", "#a3a3ad", "#e8e8ee"], amp: 0.35, spec: 0.45 }, // damarlı cilalı mermer (colors ile siyah/yeşil mermer)
+  carbon: { family: "weave", ramp: ["#040405", "#0e0f12", "#1b1d22", "#2e3139"], amp: 1.4, spec: 0.55, weaveCell: 5, twill: true }, // çapraz dokuma karbon fiber
+  cloth: { family: "weave", ramp: ["#1a0a10", "#3a1220", "#6a1f35", "#8f3550"], amp: 0.7, spec: 0.03, weaveCell: 3, twill: false }, // ince dokuma kumaş/kadife
 };
 export const materialDefaults = () => Object.fromEntries(MATERIAL_PRESETS.map((k) => [k, { colors: DEFS[k].ramp, pattern: DEFS[k].pattern }]));
 
@@ -222,6 +226,38 @@ function fields(def: Def, p: MaterialParams, w: number, h: number, dist?: Float3
       const mott = fbm(u, v, rnd(w, 120), rnd(h, 120), 3, seed + 9);
       H[i] = (streak - 0.5) * amp * 0.45 + (scratch - 0.5) * amp * 0.25 + (mott - 0.5) * amp * 2.4;
       tone[i] = (mott - 0.5) * 0.28 + Math.cos(2 * Math.PI * (u + v)) * 0.15 + Math.cos(2 * Math.PI * (u - 2 * v) + 1) * 0.05; // geniş parlama süpürmesi (periyodik)
+    }
+  } else if (def.family === "leather") {
+    const cellPx = 9 / sc, nx = Math.max(4, rnd(w, cellPx)), ny = Math.max(4, rnd(h, cellPx));
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x, u = (x + 0.5) / w, v = (y + 0.5) / h;
+      const wo = worley(u, v, nx, ny, seed), t = clamp(((wo.f2 - wo.f1) * 0.5 * cellPx) / 3.2), top = Math.sqrt(1 - (1 - t) * (1 - t));
+      const fold = fbm(u, v, rnd(w, 70), rnd(h, 70), 4, seed + 3), crease = Math.pow(1 - Math.abs(2 * fold - 1), 7), detail = fbm(u, v, rnd(w, 5), rnd(h, 5), 2, seed + 5);
+      H[i] = amp * top * 0.7 - crease * amp * 1.3 + (detail - 0.5) * 0.25;
+      tone[i] = clamp(0.5 + (wo.id - 0.5) * 0.22 + (fold - 0.5) * 0.4 - crease * 0.28);
+      dark[i] = 1 - crease * 0.4; sp[i] = def.spec * (0.5 + top);
+    }
+  } else if (def.family === "marble") {
+    const k1 = Math.max(1, Math.round(w / (230 / sc))), k2 = Math.max(1, Math.round(h / (260 / sc)));
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x, u = (x + 0.5) / w, v = (y + 0.5) / h;
+      const warp = fbm(u, v, rnd(w, 150), rnd(h, 150), 4, seed + 1), warp2 = fbm(u, v, rnd(w, 90), rnd(h, 90), 3, seed + 8);
+      const ph = Math.PI * (k1 * u + k2 * v) * 2 + warp * 11, ph2 = Math.PI * 2 * ((k1 + 1) * u - k2 * v) + warp2 * 8;
+      const vein = Math.pow(1 - Math.abs(Math.sin(ph / 2)), 22), vein2 = Math.pow(1 - Math.abs(Math.sin(ph2 / 2)), 30);
+      const cloud = fbm(u, v, rnd(w, 60), rnd(h, 60), 4, seed + 4);
+      tone[i] = clamp(0.8 + (cloud - 0.5) * 0.3 - vein * 0.6 - vein2 * 0.35);
+      H[i] = (cloud - 0.5) * amp * 0.5 - vein * 0.15;
+      sp[i] = def.spec * (1 - vein * 0.5);
+    }
+  } else if (def.family === "weave") {
+    const c = (def.weaveCell ?? 4) / sc, ni = Math.max(4, Math.round(w / c / 4) * 4), nj = Math.max(4, Math.round(h / c / 4) * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x, u = (x + 0.5) / w, v = (y + 0.5) / h, fx = u * ni, fy = v * nj, ci = Math.floor(fx), cj = Math.floor(fy), a = fx - ci, b = fy - cj;
+      const over = def.twill ? mod(ci + cj, 4) < 2 : mod(ci + cj, 2) === 0;
+      const thread = Math.sin(Math.PI * (over ? b : a)), fiber = vnoise(u * ni * 5, v * nj * 5, ni * 5, nj * 5, seed + 6), fold = fbm(u, v, rnd(w, 140), rnd(h, 140), 3, seed + 2);
+      H[i] = amp * thread * 0.8 + (fiber - 0.5) * amp * 0.2;
+      tone[i] = clamp(0.42 + thread * 0.3 + (fiber - 0.5) * 0.2 + (fold - 0.5) * 0.25);
+      dark[i] = 0.68 + 0.32 * thread; sp[i] = def.spec * (0.35 + 0.65 * thread);
     }
   } else { // wood
     const rings = Math.max(2, rnd(h, 18 / sc)), nxf = rnd(w, 60), nyf = Math.max(2, rnd(h, 1.3));

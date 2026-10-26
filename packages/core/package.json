@@ -1,6 +1,6 @@
 {
   "name": "@bediz/core", "version": "0.0.1", "type": "module",
   "main": "dist/index.js", "types": "dist/index.d.ts",
-  "scripts": { "test": "tsc -b && node dist/slice.test.js && node dist/detect.test.js && node dist/layout.test.js && node dist/design.test.js && node dist/seamless.test.js && node dist/material.test.js && node dist/container.test.js && node dist/unreal-plan.test.js && node dist/components.test.js && node dist/kit.test.js && node dist/palette.test.js && node dist/shapes.test.js && node dist/screens.test.js" },
+  "scripts": { "test": "tsc -b && node dist/slice.test.js && node dist/detect.test.js && node dist/layout.test.js && node dist/design.test.js && node dist/seamless.test.js && node dist/material.test.js && node dist/container.test.js && node dist/unreal-plan.test.js && node dist/components.test.js && node dist/kit.test.js && node dist/palette.test.js && node dist/shapes.test.js && node dist/repeat.test.js && node dist/screens.test.js" },
   "dependencies": { "zod": "^3.23.8" }
 }
